@@ -62,7 +62,7 @@ services:
       REDIS_PORT: "6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     entrypoint: []
-    command: ["bash", "-c", "until pg_isready -h db -p 5432 -U $${DB_USERNAME} 2>/dev/null; do sleep 2; done && for i in 1 2 3; do php artisan queue:work --sleep=3 --tries=3 --timeout=3600 & done && trap 'kill $$(jobs -p) 2>/dev/null; wait' SIGTERM SIGINT && wait"]
+    command: [ "bash", "-c", "until pg_isready -h db -p 5432 -U $${DB_USERNAME} 2>/dev/null; do sleep 2; done && for i in 1 2 3; do php artisan queue:work --sleep=3 --tries=3 --timeout=3600 & done && trap 'kill $$(jobs -p) 2>/dev/null; wait' SIGTERM SIGINT && wait" ]
     depends_on:
       - db
       - redis
@@ -84,7 +84,7 @@ services:
       APP_NAME: YoutubeDownloader
       APP_ENV: production
       APP_DEBUG: "false"
-      APP_URL: ${APP_URL:-http://localhost:8080}
+      APP_URL: ${APP_URL:-http://localhost:8002}
       DB_CONNECTION: pgsql
       DB_HOST: db
       DB_PORT: "5432"
@@ -98,7 +98,7 @@ services:
       REDIS_PORT: "6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     entrypoint: []
-    command: ["php", "artisan", "schedule:work"]
+    command: [ "php", "artisan", "schedule:work" ]
     depends_on:
       - db
       - redis
