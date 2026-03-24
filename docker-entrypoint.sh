@@ -7,6 +7,12 @@ until pg_isready -h "${DB_HOST:-db}" -p "${DB_PORT:-5432}" -U "${DB_USERNAME}" 2
 done
 echo "Base de datos lista."
 
+# Ensure .env file exists
+if [ ! -f /var/www/.env ]; then
+  echo "Creando archivo .env..."
+  cp /var/www/.env.example /var/www/.env
+fi
+
 # Generate APP_KEY if not set
 if [ -z "$APP_KEY" ] || [ "$APP_KEY" = "base64:" ]; then
   echo "Generando APP_KEY..."

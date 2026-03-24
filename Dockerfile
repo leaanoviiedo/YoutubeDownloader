@@ -51,6 +51,9 @@ RUN npm ci
 # Copy rest of the application
 COPY . /var/www
 
+# Create .env from .env.example (needed for key:generate and config:cache)
+RUN cp .env.example .env
+
 # Run composer scripts after full copy
 RUN composer dump-autoload --optimize
 
@@ -64,7 +67,7 @@ RUN mkdir -p storage/framework/{sessions,views,cache} \
     && mkdir -p bootstrap/cache
 
 # Set permissions
-RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
+RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache /var/www/.env
 
 # Copy entrypoint script
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
