@@ -25,9 +25,9 @@ services:
     volumes:
       - .:/var/www
     env_file: .env
-    command: php artisan queue:work --tries=3 --timeout=3600
+    command: ["bash", "-c", "for i in 1 2 3; do php artisan queue:work --tries=3 --timeout=3600 & done && wait"]
     depends_on:
-      - app
+      - db
       - redis
     networks:
       - youtube_net

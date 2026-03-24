@@ -1,58 +1,170 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# 🎵 YT Playlist Downloader
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Aplicación web para descargar y convertir playlists de YouTube a MP3, construida con **Laravel 13**, **Livewire 4**, y completamente dockerizada.
 
-## About Laravel
+---
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## 🛠️ Tecnologías Usadas
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+| Tecnología | Versión | Descripción |
+|---|---|---|
+| **Laravel** | 13 | Framework PHP backend |
+| **Livewire** | 4 | Componentes reactivos sin escribir JS |
+| **Tailwind CSS** | 4 | Framework CSS utility-first |
+| **Alpine.js** | 3 | Interactividad ligera en el frontend |
+| **PostgreSQL** | 15 | Base de datos relacional |
+| **Redis** | Alpine | Cache, colas y estado en tiempo real |
+| **Nginx** | Alpine | Servidor web |
+| **PHP-FPM** | 8.4 | Procesador PHP |
+| **yt-dlp** | Latest | Descarga de videos/audio de YouTube |
+| **FFmpeg** | Latest | Conversión de audio |
+| **Docker** | - | Contenedorización |
+| **Vite** | 8 | Bundler de assets |
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+---
 
-## Learning Laravel
+## 📋 Requisitos Previos
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+Solo necesitás tener **Docker** instalado en tu sistema.
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+### Instalar Docker en Ubuntu/Debian
 
 ```bash
-composer require laravel/boost --dev
+# Actualizar paquetes
+sudo apt update
 
-php artisan boost:install
+# Instalar Docker
+sudo apt install -y docker.io
+
+# Instalar Docker Compose
+sudo apt install -y docker-compose-v2
+
+# Iniciar y habilitar Docker
+sudo systemctl start docker
+sudo systemctl enable docker
+
+# (Opcional) Agregar tu usuario al grupo docker
+sudo usermod -aG docker $USER
+# Cerrar sesión y volver a entrar para que tome efecto
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+---
 
-## Contributing
+## 🚀 Instalación y Uso
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### 1. Clonar el repositorio
 
-## Code of Conduct
+```bash
+git clone <url-del-repositorio>
+cd YoutubeDownload
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+### 2. Configurar el archivo .env
 
-## Security Vulnerabilities
+El archivo `.env` ya viene configurado para Docker. Los valores por defecto son:
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+```env
+DB_CONNECTION=pgsql
+DB_HOST=db
+DB_PORT=5432
+DB_DATABASE=youtube_dl
+DB_USERNAME=laravel
+DB_PASSWORD=secret
 
-## License
+QUEUE_CONNECTION=redis
+CACHE_STORE=redis
+REDIS_HOST=redis
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+### 3. Construir y levantar los contenedores
+
+```bash
+sudo docker compose up --build -d
+```
+
+> ⏳ La primera vez puede tardar unos minutos mientras descarga las imágenes y compila los assets.
+
+### 4. Acceder a la aplicación
+
+Abrí tu navegador en: **http://localhost:8080**
+
+---
+
+## 🐳 Arquitectura Docker
+
+El proyecto usa 5 servicios:
+
+| Servicio | Contenedor | Descripción |
+|---|---|---|
+| **app** | `youtube_app` | PHP-FPM con yt-dlp y FFmpeg |
+| **worker** | `youtube_worker` | 3 workers paralelos para procesar descargas |
+| **web** | `youtube_web` | Nginx como servidor web (puerto 8080) |
+| **db** | `youtube_db` | PostgreSQL para persistencia |
+| **redis** | `youtube_redis` | Redis para colas y estado en tiempo real |
+
+### Comandos útiles
+
+```bash
+# Ver estado de los contenedores
+sudo docker compose ps
+
+# Ver logs de la aplicación
+sudo docker compose logs app
+
+# Ver logs del worker
+sudo docker compose logs worker
+
+# Detener todos los contenedores
+sudo docker compose down
+
+# Reconstruir después de cambios
+sudo docker compose up --build -d
+```
+
+---
+
+## 🎶 Funcionalidades
+
+- **Descargar playlists completas**: Pegá el link y la app descarga todas las canciones.
+- **Descargas paralelas**: 3 workers procesan canciones simultáneamente.
+- **Progreso en tiempo real**: Barras de progreso animadas para cada canción.
+- **Reproducir desde el navegador**: Escuchá los MP3 directamente sin descargarlos.
+- **Descarga individual**: Descargá cada canción terminada como MP3.
+- **Descarga masiva**: Descargá todas las canciones en un archivo ZIP.
+- **Diseño Dark Minimal**: Interfaz moderna con glassmorphism y animaciones.
+
+---
+
+## 📁 Estructura del Proyecto
+
+```
+├── app/
+│   ├── Jobs/
+│   │   ├── DownloadPlaylistJob.php    # Obtiene info de la playlist
+│   │   └── DownloadTrackJob.php       # Descarga canción individual
+│   ├── Livewire/
+│   │   └── Dashboard.php             # Componente principal
+│   └── Services/
+│       └── YouTubeDownloadService.php # Lógica de yt-dlp
+├── resources/views/
+│   ├── components/layouts/app.blade.php
+│   └── livewire/dashboard.blade.php   # Vista del dashboard
+├── Dockerfile
+├── docker-compose.yml
+├── docker-entrypoint.sh
+└── nginx.conf
+```
+
+---
+
+## ⚠️ Notas Importantes
+
+- Los archivos MP3 se guardan en `storage/app/downloads/`.
+- La aplicación usa `yt-dlp` que se actualiza frecuentemente. Si alguna descarga falla, puede ser necesario actualizar la imagen Docker.
+- Asegurate de tener suficiente espacio en disco para las descargas.
+
+---
+
+## 📄 Licencia
+
+MIT

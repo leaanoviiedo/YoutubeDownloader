@@ -4,7 +4,6 @@ namespace App\Services;
 
 use Symfony\Component\Process\Process;
 use Symfony\Component\Process\Exception\ProcessFailedException;
-use Illuminate\Support\Facades\Storage;
 
 class YouTubeDownloadService
 {
@@ -17,6 +16,7 @@ class YouTubeDownloadService
             $url
         ]);
 
+        $process->setTimeout(120);
         $process->run();
 
         if (!$process->isSuccessful()) {
@@ -29,26 +29,29 @@ class YouTubeDownloadService
         return array_map(fn($line) => json_decode($line, true), $lines);
     }
 
-    public function downloadTrack(string $url, string $filename, ?callable $onProgress = null): string
+    public function downloadTrack(string $url, string $outputTemplate, ?callable $onProgress = null): string
     {
-        if (!file_exists(storage_path('app/downloads'))) {
-            mkdir(storage_path('app/downloads'), 0755, true);
+        $downloadsDir = storage_path('app/downloads');
+        if (!file_exists($downloadsDir)) {
+            mkdir($downloadsDir, 0755, true);
         }
-        $path = storage_path('app/downloads/' . $filename . '.mp3');
-        
+
+        // Use a specific output template that includes the video ID for uniqueness
+        $template = $downloadsDir . '/' . $outputTemplate . '.%(ext)s';
+
         $process = new Process([
             'yt-dlp',
             '-x',
             '--audio-format', 'mp3',
             '--audio-quality', '0',
-            '-o', storage_path('app/downloads/%(title)s.%(ext)s'),
+            '-o', $template,
+            '--no-playlist',
             $url
         ]);
 
         $process->setTimeout(3600);
         $process->run(function ($type, $buffer) use ($onProgress) {
             if ($onProgress) {
-                // Parse yt-dlp output for progress if needed
                 $onProgress($buffer);
             }
         });
@@ -57,6 +60,19 @@ class YouTubeDownloadService
             throw new ProcessFailedException($process);
         }
 
-        return $path;
+        // Find the output file
+        $expectedFile = $downloadsDir . '/' . $outputTemplate . '.mp3';
+        if (file_exists($expectedFile)) {
+            return basename($expectedFile);
+        }
+
+        // Fallback: return the latest mp3 in the directory
+        $files = glob($downloadsDir . '/*.mp3');
+        if (!empty($files)) {
+            usort($files, fn($a, $b) => filemtime($b) - filemtime($a));
+            return basename($files[0]);
+        }
+
+        return '';
     }
 }

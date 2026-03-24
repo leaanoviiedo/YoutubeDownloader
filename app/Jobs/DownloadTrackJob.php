@@ -10,6 +10,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Str;
 
 class DownloadTrackJob implements ShouldQueue
 {
@@ -26,21 +27,27 @@ class DownloadTrackJob implements ShouldQueue
     public function handle(YouTubeDownloadService $service): void
     {
         $id = md5($this->url);
+
+        // Sanitize the title for use as filename
+        $safeTitle = Str::slug($this->title, '_');
+        if (empty($safeTitle)) {
+            $safeTitle = 'track_' . $id;
+        }
+
         Redis::hset('download_status', $id, json_encode([
             'title' => $this->title,
             'status' => 'downloading',
-            'progress' => 0
+            'progress' => 0,
         ]));
 
         try {
-            $service->downloadTrack($this->url, $this->title, function ($buffer) use ($id) {
-                // Simplified progress parsing
-                if (preg_match('/\[download\]\s+(\d+\.\d+)%/', $buffer, $matches)) {
-                    $progress = $matches[1];
+            $filename = $service->downloadTrack($this->url, $safeTitle, function ($buffer) use ($id) {
+                if (preg_match('/\[download\]\s+(\d+\.?\d*)%/', $buffer, $matches)) {
+                    $progress = floatval($matches[1]);
                     Redis::hset('download_status', $id, json_encode([
                         'title' => $this->title,
                         'status' => 'downloading',
-                        'progress' => $progress
+                        'progress' => $progress,
                     ]));
                 }
             });
@@ -48,15 +55,16 @@ class DownloadTrackJob implements ShouldQueue
             Redis::hset('download_status', $id, json_encode([
                 'title' => $this->title,
                 'status' => 'completed',
-                'progress' => 100
+                'progress' => 100,
+                'filename' => $filename,
             ]));
 
         } catch (\Exception $e) {
-            Log::error("Failed to download track {$this->title}: " . $e->getMessage());
+            Log::error("Error al descargar {$this->title}: " . $e->getMessage());
             Redis::hset('download_status', $id, json_encode([
                 'title' => $this->title,
                 'status' => 'failed',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]));
         }
     }
