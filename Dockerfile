@@ -51,8 +51,9 @@ RUN npm ci
 # Copy rest of the application
 COPY . /var/www
 
-# Create .env from .env.example (needed for key:generate and config:cache)
-RUN cp .env.example .env
+# Create .env from .env.example and generate APP_KEY during build
+RUN cp .env.example .env \
+    && php artisan key:generate --force
 
 # Run composer scripts after full copy
 RUN composer dump-autoload --optimize

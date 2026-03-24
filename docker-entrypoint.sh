@@ -11,11 +11,6 @@ echo "Base de datos lista."
 if [ ! -f /var/www/.env ]; then
   echo "Creando archivo .env..."
   cp /var/www/.env.example /var/www/.env
-fi
-
-# Generate APP_KEY if not set
-if [ -z "$APP_KEY" ] || [ "$APP_KEY" = "base64:" ]; then
-  echo "Generando APP_KEY..."
   php artisan key:generate --force
 fi
 
@@ -32,7 +27,8 @@ chown -R www-data:www-data storage bootstrap/cache 2>/dev/null || true
 # Storage link
 php artisan storage:link 2>/dev/null || true
 
-# Cache config and views for production
+# Clear any old cached config and re-cache with current .env values
+php artisan config:clear 2>/dev/null || true
 php artisan config:cache 2>/dev/null || true
 php artisan view:cache 2>/dev/null || true
 
