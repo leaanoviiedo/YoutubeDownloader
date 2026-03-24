@@ -71,7 +71,7 @@ sudo docker compose up --build -d
 
 #### 3. Acceder a la aplicación
 
-Abrí tu navegador en: **http://localhost:8080**
+Abrí tu navegador en: **http://localhost:8002**
 
 ---
 
@@ -92,13 +92,13 @@ Abrí Portainer en tu navegador (generalmente `http://<ip-raspberry>:9000`).
    - **Compose path**: `docker-compose.yml`
 4. (Opcional) En **Environment variables**, podés personalizar:
    - `DB_PASSWORD`: Contraseña de PostgreSQL (por defecto: `secret`)
-   - `WEB_PORT`: Puerto web (por defecto: `8080`)
-   - `APP_URL`: URL de la aplicación (por defecto: `http://localhost:8080`)
+   - `WEB_PORT`: Puerto web (por defecto: `8002`)
+   - `APP_URL`: URL de la aplicación (por defecto: `http://localhost:8002`)
 5. Click en **Deploy the stack**
 
 #### 3. Acceder a la aplicación
 
-Abrí tu navegador en: **http://<ip-raspberry>:8080**
+Abrí tu navegador en: **http://<ip-raspberry>:8002**
 
 > 💡 **Nota**: No es necesario crear un archivo `.env`. Todas las variables de entorno están definidas en el `docker-compose.yml` con valores por defecto que funcionan inmediatamente.
 
@@ -113,7 +113,7 @@ El proyecto usa 6 servicios:
 | **app** | `youtube_app` | PHP-FPM con yt-dlp y FFmpeg |
 | **worker** | `youtube_worker` | 3 workers paralelos para procesar descargas |
 | **scheduler** | `youtube_scheduler` | Programador de tareas (limpieza automática) |
-| **web** | `youtube_web` | Nginx como servidor web (puerto 8080) |
+| **web** | `youtube_web` | Nginx como servidor web (puerto 8002) |
 | **db** | `youtube_db` | PostgreSQL para persistencia |
 | **redis** | `youtube_redis` | Redis para colas y estado en tiempo real |
 
