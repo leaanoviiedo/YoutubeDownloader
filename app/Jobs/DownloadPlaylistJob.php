@@ -11,6 +11,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Str;
 
 class DownloadPlaylistJob implements ShouldQueue
 {
@@ -25,6 +26,24 @@ class DownloadPlaylistJob implements ShouldQueue
     public function handle(YouTubeDownloadService $service): void
     {
         try {
+            // Get playlist title and create folder name
+            $playlistTitle = $service->getPlaylistTitle($this->playlistUrl);
+            $playlistFolder = Str::slug($playlistTitle, '_');
+
+            if (empty($playlistFolder)) {
+                $playlistFolder = 'playlist_' . date('Y_m_d_His');
+            }
+
+            // Store playlist name in Redis for the UI
+            Redis::set('current_playlist_name', $playlistTitle);
+            Redis::set('current_playlist_folder', $playlistFolder);
+
+            // Create the playlist directory
+            $playlistDir = storage_path('app/downloads/' . $playlistFolder);
+            if (!file_exists($playlistDir)) {
+                mkdir($playlistDir, 0755, true);
+            }
+
             $tracks = $service->getPlaylistInfo($this->playlistUrl);
 
             // Register ALL tracks in Redis immediately with 'queued' status
@@ -42,9 +61,10 @@ class DownloadPlaylistJob implements ShouldQueue
                     'title' => $title,
                     'status' => 'queued',
                     'progress' => 0,
+                    'playlist_folder' => $playlistFolder,
                 ]));
 
-                $jobs[] = new DownloadTrackJob($url, $title);
+                $jobs[] = new DownloadTrackJob($url, $title, $playlistFolder);
             }
 
             // Dispatch all jobs at once for parallel processing

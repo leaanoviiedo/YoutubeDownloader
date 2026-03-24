@@ -52,31 +52,16 @@ sudo usermod -aG docker $USER
 
 ## 🚀 Instalación y Uso
 
-### 1. Clonar el repositorio
+### Opción 1: Desde la Terminal
+
+#### 1. Clonar el repositorio
 
 ```bash
 git clone <url-del-repositorio>
 cd YoutubeDownload
 ```
 
-### 2. Configurar el archivo .env
-
-El archivo `.env` ya viene configurado para Docker. Los valores por defecto son:
-
-```env
-DB_CONNECTION=pgsql
-DB_HOST=db
-DB_PORT=5432
-DB_DATABASE=youtube_dl
-DB_USERNAME=laravel
-DB_PASSWORD=secret
-
-QUEUE_CONNECTION=redis
-CACHE_STORE=redis
-REDIS_HOST=redis
-```
-
-### 3. Construir y levantar los contenedores
+#### 2. Construir y levantar los contenedores
 
 ```bash
 sudo docker compose up --build -d
@@ -84,23 +69,62 @@ sudo docker compose up --build -d
 
 > ⏳ La primera vez puede tardar unos minutos mientras descarga las imágenes y compila los assets.
 
-### 4. Acceder a la aplicación
+#### 3. Acceder a la aplicación
 
 Abrí tu navegador en: **http://localhost:8080**
 
 ---
 
+### Opción 2: Desde Portainer (Recomendado para Raspberry Pi)
+
+#### 1. Acceder a Portainer
+
+Abrí Portainer en tu navegador (generalmente `http://<ip-raspberry>:9000`).
+
+#### 2. Crear un nuevo Stack
+
+1. Ir a **Stacks** → **+ Add stack**
+2. Seleccionar **Repository**
+3. Configurar:
+   - **Name**: `youtube-downloader`
+   - **Repository URL**: `<url-del-repositorio-git>`
+   - **Repository reference**: `refs/heads/main`
+   - **Compose path**: `docker-compose.yml`
+4. (Opcional) En **Environment variables**, podés personalizar:
+   - `DB_PASSWORD`: Contraseña de PostgreSQL (por defecto: `secret`)
+   - `WEB_PORT`: Puerto web (por defecto: `8080`)
+   - `APP_URL`: URL de la aplicación (por defecto: `http://localhost:8080`)
+5. Click en **Deploy the stack**
+
+#### 3. Acceder a la aplicación
+
+Abrí tu navegador en: **http://<ip-raspberry>:8080**
+
+> 💡 **Nota**: No es necesario crear un archivo `.env`. Todas las variables de entorno están definidas en el `docker-compose.yml` con valores por defecto que funcionan inmediatamente.
+
+---
+
 ## 🐳 Arquitectura Docker
 
-El proyecto usa 5 servicios:
+El proyecto usa 6 servicios:
 
 | Servicio | Contenedor | Descripción |
 |---|---|---|
 | **app** | `youtube_app` | PHP-FPM con yt-dlp y FFmpeg |
 | **worker** | `youtube_worker` | 3 workers paralelos para procesar descargas |
+| **scheduler** | `youtube_scheduler` | Programador de tareas (limpieza automática) |
 | **web** | `youtube_web` | Nginx como servidor web (puerto 8080) |
 | **db** | `youtube_db` | PostgreSQL para persistencia |
 | **redis** | `youtube_redis` | Redis para colas y estado en tiempo real |
+
+### Volúmenes Persistentes
+
+| Volumen | Descripción |
+|---|---|
+| `pgdata` | Datos de PostgreSQL |
+| `downloads` | Archivos MP3 descargados |
+| `app_storage` | Cache de framework |
+| `app_logs` | Logs de la aplicación |
 
 ### Comandos útiles
 
@@ -126,11 +150,12 @@ sudo docker compose up --build -d
 ## 🎶 Funcionalidades
 
 - **Descargar playlists completas**: Pegá el link y la app descarga todas las canciones.
+- **Organización por carpetas**: Cada playlist se guarda en su propia carpeta con el nombre de la playlist.
 - **Descargas paralelas**: 3 workers procesan canciones simultáneamente.
 - **Progreso en tiempo real**: Barras de progreso animadas para cada canción.
 - **Reproducir desde el navegador**: Escuchá los MP3 directamente sin descargarlos.
 - **Descarga individual**: Descargá cada canción terminada como MP3.
-- **Descarga masiva**: Descargá todas las canciones en un archivo ZIP.
+- **Descarga masiva**: Descargá todas las canciones en un archivo ZIP con el nombre de la playlist.
 - **Diseño Dark Minimal**: Interfaz moderna con glassmorphism y animaciones.
 
 ---
@@ -149,7 +174,8 @@ sudo docker compose up --build -d
 ├── resources/views/
 │   ├── components/layouts/app.blade.php
 │   └── livewire/dashboard.blade.php   # Vista del dashboard
-├── Dockerfile
+├── Dockerfile                         # Build de la app PHP
+├── nginx.Dockerfile                   # Build de Nginx con assets
 ├── docker-compose.yml
 ├── docker-entrypoint.sh
 └── nginx.conf
@@ -159,8 +185,10 @@ sudo docker compose up --build -d
 
 ## ⚠️ Notas Importantes
 
-- Los archivos MP3 se guardan en `storage/app/downloads/`.
-- La aplicación usa `yt-dlp` que se actualiza frecuentemente. Si alguna descarga falla, puede ser necesario actualizar la imagen Docker.
+- Los archivos MP3 se guardan en `storage/app/downloads/{nombre-playlist}/`.
+- El ZIP se descarga con el nombre de la playlist.
+- La APP_KEY se genera automáticamente en el primer inicio.
+- La aplicación usa `yt-dlp` que se actualiza frecuentemente. Si alguna descarga falla, puede ser necesario reconstruir la imagen Docker.
 - Asegurate de tener suficiente espacio en disco para las descargas.
 
 ---

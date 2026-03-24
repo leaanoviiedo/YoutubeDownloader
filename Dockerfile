@@ -1,4 +1,4 @@
-FROM php:8.4-fpm
+FROM php:8.4-fpm AS app-build
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -36,14 +36,35 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Set working directory
 WORKDIR /var/www
 
-# Copy existing application directory contents
+# Copy composer files first for better caching
+COPY composer.json composer.lock ./
+
+# Install PHP dependencies
+RUN composer install --no-dev --optimize-autoloader --no-scripts --no-interaction
+
+# Copy package files for npm
+COPY package.json package-lock.json ./
+
+# Install JS dependencies
+RUN npm ci
+
+# Copy rest of the application
 COPY . /var/www
 
-# Install JS dependencies and build assets
-RUN npm install && npm run build
+# Run composer scripts after full copy
+RUN composer dump-autoload --optimize
+
+# Build frontend assets
+RUN npm run build
+
+# Ensure storage and cache directories exist
+RUN mkdir -p storage/framework/{sessions,views,cache} \
+    && mkdir -p storage/app/downloads \
+    && mkdir -p storage/logs \
+    && mkdir -p bootstrap/cache
 
 # Set permissions
-RUN chown -R www-data:www-data /var/www
+RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
 
 # Copy entrypoint script
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

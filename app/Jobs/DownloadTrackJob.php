@@ -20,7 +20,8 @@ class DownloadTrackJob implements ShouldQueue
 
     public function __construct(
         protected string $url,
-        protected string $title
+        protected string $title,
+        protected string $playlistFolder = ''
     ) {
     }
 
@@ -47,16 +48,18 @@ class DownloadTrackJob implements ShouldQueue
             'title' => $this->title,
             'status' => 'downloading',
             'progress' => 0,
+            'playlist_folder' => $this->playlistFolder,
         ]));
 
         try {
-            $filename = $service->downloadTrack($this->url, $safeTitle, function ($buffer) use ($id) {
+            $filename = $service->downloadTrack($this->url, $safeTitle, $this->playlistFolder, function ($buffer) use ($id) {
                 if (preg_match('/\[download\]\s+(\d+\.?\d*)%/', $buffer, $matches)) {
                     $progress = floatval($matches[1]);
                     Redis::hset('download_status', $id, json_encode([
                         'title' => $this->title,
                         'status' => 'downloading',
                         'progress' => $progress,
+                        'playlist_folder' => $this->playlistFolder,
                     ]));
                 }
             });
@@ -66,6 +69,7 @@ class DownloadTrackJob implements ShouldQueue
                 'status' => 'completed',
                 'progress' => 100,
                 'filename' => $filename,
+                'playlist_folder' => $this->playlistFolder,
             ]));
 
         } catch (\Exception $e) {
@@ -74,6 +78,7 @@ class DownloadTrackJob implements ShouldQueue
                 'title' => $this->title,
                 'status' => 'failed',
                 'error' => $e->getMessage(),
+                'playlist_folder' => $this->playlistFolder,
             ]));
         }
     }

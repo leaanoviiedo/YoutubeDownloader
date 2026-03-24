@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Jobs\DownloadPlaylistJob;
 use App\Services\YouTubeDownloadService;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Str;
 use Livewire\Component;
 
 class Dashboard extends Component
@@ -16,9 +17,12 @@ class Dashboard extends Component
     public bool $previewing = false;
     public ?string $playingTrack = null;
     public string $playlistUrl = '';
+    public string $playlistName = '';
 
     public function mount(): void
     {
+        // Recover playlist name from Redis
+        $this->playlistName = Redis::get('current_playlist_name') ?? '';
         $this->fetchDownloads();
     }
 
@@ -34,6 +38,10 @@ class Dashboard extends Component
 
         try {
             $service = app(YouTubeDownloadService::class);
+
+            // Get playlist title first
+            $this->playlistName = $service->getPlaylistTitle($this->url);
+
             $tracks = $service->getPlaylistInfo($this->url);
 
             $this->previewTracks = [];
@@ -64,12 +72,18 @@ class Dashboard extends Component
     {
         if (empty($this->previewTracks)) return;
 
+        $playlistFolder = Str::slug($this->playlistName, '_');
+        if (empty($playlistFolder)) {
+            $playlistFolder = 'playlist_' . date('Y_m_d_His');
+        }
+
         foreach ($this->previewTracks as $track) {
             $id = md5($track['url']);
             Redis::hset('download_status', $id, json_encode([
                 'title' => $track['title'],
                 'status' => 'queued',
                 'progress' => 0,
+                'playlist_folder' => $playlistFolder,
             ]));
         }
 
@@ -106,21 +120,37 @@ class Dashboard extends Component
         $this->previewTracks = [];
         $this->previewing = false;
         $this->playlistUrl = '';
+        $this->playlistName = '';
     }
 
     public function clearAll(): void
     {
         Redis::del('download_status');
+        Redis::del('current_playlist_name');
+        Redis::del('current_playlist_folder');
         $this->downloads = [];
         $this->playingTrack = null;
+        $this->playlistName = '';
 
         $dir = storage_path('app/downloads');
         if (is_dir($dir)) {
+            // Clean files in root
             $patterns = ['*.mp3', '*.part', '*.temp', '*.webm', '*.m4a', '*.opus', '*.zip', '*.tmp', '*.ytdl'];
             foreach ($patterns as $pattern) {
                 foreach (glob($dir . '/' . $pattern) as $file) {
                     @unlink($file);
                 }
+            }
+
+            // Clean playlist subdirectories
+            $subdirs = glob($dir . '/*', GLOB_ONLYDIR);
+            foreach ($subdirs as $subdir) {
+                foreach ($patterns as $pattern) {
+                    foreach (glob($subdir . '/' . $pattern) as $file) {
+                        @unlink($file);
+                    }
+                }
+                @rmdir($subdir);
             }
         }
     }
@@ -128,7 +158,12 @@ class Dashboard extends Component
     public function downloadZip(): \Symfony\Component\HttpFoundation\BinaryFileResponse
     {
         $dir = storage_path('app/downloads');
-        $zipPath = storage_path('app/downloads/playlist.zip');
+        $playlistFolder = Redis::get('current_playlist_folder') ?? '';
+        $playlistName = Redis::get('current_playlist_name') ?? 'playlist';
+        $zipName = Str::slug($playlistName, '_') . '.zip';
+
+        $searchDir = !empty($playlistFolder) ? $dir . '/' . $playlistFolder : $dir;
+        $zipPath = $dir . '/' . $zipName;
         
         $zip = new \ZipArchive();
         $zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
@@ -138,14 +173,14 @@ class Dashboard extends Component
             if ($item['status'] === 'completed' && isset($item['filename'])) {
                 $filePath = $dir . '/' . $item['filename'];
                 if (file_exists($filePath)) {
-                    $zip->addFile($filePath, $item['filename']);
+                    $zip->addFile($filePath, basename($item['filename']));
                 }
             }
         }
 
         $zip->close();
 
-        return response()->download($zipPath, 'playlist.zip')->deleteFileAfterSend();
+        return response()->download($zipPath, $zipName)->deleteFileAfterSend();
     }
 
     public function playTrack(string $id): void
@@ -158,21 +193,37 @@ class Dashboard extends Component
         $dir = storage_path('app/downloads');
         if (!is_dir($dir)) return;
 
+        // Scan root directory
+        $this->scanDirectoryForFiles($dir, '');
+
+        // Scan subdirectories (playlist folders)
+        $subdirs = glob($dir . '/*', GLOB_ONLYDIR);
+        foreach ($subdirs as $subdir) {
+            $folderName = basename($subdir);
+            $this->scanDirectoryForFiles($subdir, $folderName);
+        }
+
+        $this->fetchDownloads();
+    }
+
+    private function scanDirectoryForFiles(string $dir, string $subfolder): void
+    {
         $files = glob($dir . '/*.mp3');
         foreach ($files as $file) {
             $filename = basename($file);
-            $id = md5($filename);
+            $relativePath = !empty($subfolder) ? $subfolder . '/' . $filename : $filename;
+            $id = md5($relativePath);
             if (!Redis::hexists('download_status', $id)) {
                 $title = str_replace(['.mp3', '_', '-'], ['', ' ', ' '], $filename);
                 Redis::hset('download_status', $id, json_encode([
                     'title' => ucwords(trim($title)),
                     'status' => 'completed',
                     'progress' => 100,
-                    'filename' => $filename,
+                    'filename' => $relativePath,
+                    'playlist_folder' => $subfolder,
                 ]));
             }
         }
-        $this->fetchDownloads();
     }
 
     public function fetchDownloads(): void

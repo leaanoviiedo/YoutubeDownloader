@@ -119,6 +119,16 @@
             $stopped = count(array_filter($downloads, fn($d) => $d['status'] === 'stopped'));
             $active = $downloading + $queued;
         @endphp
+
+        @if(!empty($playlistName))
+            <div class="glass-card p-4 mb-4 flex items-center gap-3">
+                <svg class="h-5 w-5 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                </svg>
+                <span class="text-white font-semibold">{{ $playlistName }}</span>
+            </div>
+        @endif
+
         <div class="glass-card p-4 mb-6 flex flex-wrap items-center justify-between gap-4">
             <div class="flex items-center gap-6 text-sm font-medium">
                 <span class="text-slate-300">

@@ -20,14 +20,20 @@ class CleanOldDownloads extends Command
             return 0;
         }
 
-        $files = glob($dir . '/*.mp3');
         $cutoff = now()->subDays($days)->timestamp;
         $deleted = 0;
 
-        foreach ($files as $file) {
-            if (filemtime($file) < $cutoff) {
-                @unlink($file);
-                $deleted++;
+        // Clean root directory
+        $deleted += $this->cleanDirectory($dir, $cutoff);
+
+        // Clean playlist subdirectories
+        $subdirs = glob($dir . '/*', GLOB_ONLYDIR);
+        foreach ($subdirs as $subdir) {
+            $deleted += $this->cleanDirectory($subdir, $cutoff);
+
+            // Remove empty directories
+            if (count(glob($subdir . '/*')) === 0) {
+                @rmdir($subdir);
             }
         }
 
@@ -45,5 +51,20 @@ class CleanOldDownloads extends Command
 
         $this->info("Eliminados {$deleted} archivos con más de {$days} día(s).");
         return 0;
+    }
+
+    private function cleanDirectory(string $dir, int $cutoff): int
+    {
+        $deleted = 0;
+        $files = glob($dir . '/*.mp3');
+
+        foreach ($files as $file) {
+            if (filemtime($file) < $cutoff) {
+                @unlink($file);
+                $deleted++;
+            }
+        }
+
+        return $deleted;
     }
 }
