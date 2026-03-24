@@ -3,7 +3,6 @@
 use App\Livewire\Dashboard;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Response;
-use ZipArchive;
 
 Route::get('/', Dashboard::class);
 
@@ -44,8 +43,8 @@ Route::get('/download-all', function () {
 
     $zipPath = storage_path('app/downloads/playlist.zip');
 
-    $zip = new ZipArchive();
-    $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+    $zip = new \ZipArchive();
+    $zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
     
     foreach ($files as $file) {
         $zip->addFile($file, basename($file));

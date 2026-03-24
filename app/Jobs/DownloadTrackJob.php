@@ -28,6 +28,15 @@ class DownloadTrackJob implements ShouldQueue
     {
         $id = md5($this->url);
 
+        // Check if this download was stopped
+        $existing = Redis::hget('download_status', $id);
+        if ($existing) {
+            $data = json_decode($existing, true);
+            if (($data['status'] ?? '') === 'stopped') {
+                return;
+            }
+        }
+
         // Sanitize the title for use as filename
         $safeTitle = Str::slug($this->title, '_');
         if (empty($safeTitle)) {
