@@ -26,7 +26,7 @@ services:
       - .:/var/www
     env_file: .env
     entrypoint: []
-    command: ["bash", "-c", "until pg_isready -h db -p 5432 -U $${DB_USERNAME} 2>/dev/null; do sleep 2; done && php artisan queue:work --sleep=3 --tries=3 --timeout=3600"]
+    command: ["bash", "-c", "until pg_isready -h db -p 5432 -U $${DB_USERNAME} 2>/dev/null; do sleep 2; done && for i in 1 2 3; do php artisan queue:work --sleep=3 --tries=3 --timeout=3600 & done && trap 'kill $$(jobs -p) 2>/dev/null; wait' SIGTERM SIGINT && wait"]
     depends_on:
       - db
       - redis

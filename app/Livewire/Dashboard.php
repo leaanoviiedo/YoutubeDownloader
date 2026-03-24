@@ -116,9 +116,11 @@ class Dashboard extends Component
 
         $dir = storage_path('app/downloads');
         if (is_dir($dir)) {
-            $files = glob($dir . '/*.mp3');
-            foreach ($files as $file) {
-                @unlink($file);
+            $patterns = ['*.mp3', '*.part', '*.temp', '*.webm', '*.m4a', '*.opus', '*.zip', '*.tmp', '*.ytdl'];
+            foreach ($patterns as $pattern) {
+                foreach (glob($dir . '/' . $pattern) as $file) {
+                    @unlink($file);
+                }
             }
         }
     }
