@@ -59,14 +59,15 @@ class YouTubeDownloadService
      */
     public function getSingleTrackInfo(string $url): array
     {
+        // Use --print to fetch only the fields we need — much faster than --dump-json
         $process = new Process([
             'yt-dlp',
-            '--dump-json',
             '--no-playlist',
+            '--print', '{"title":%(title)j,"webpage_url":%(webpage_url)j,"duration":%(duration)j,"uploader":%(uploader)j,"thumbnail":%(thumbnail)j,"view_count":%(view_count)j}',
             $url
         ]);
 
-        $process->setTimeout(60);
+        $process->setTimeout(120);
         $process->run();
 
         if (!$process->isSuccessful()) {
@@ -74,7 +75,6 @@ class YouTubeDownloadService
         }
 
         $output = trim($process->getOutput());
-        // Take only the first JSON object (in case of multiple lines)
         $firstLine = strtok($output, "\n");
         $data = json_decode($firstLine, true);
 
@@ -83,12 +83,12 @@ class YouTubeDownloadService
         }
 
         return [
-            'title'     => $data['title'] ?? 'Sin título',
-            'url'       => $data['webpage_url'] ?? $url,
-            'duration'  => $data['duration'] ?? null,
-            'uploader'  => $data['uploader'] ?? $data['channel'] ?? '',
-            'thumbnail' => $data['thumbnail'] ?? null,
-            'view_count'=> $data['view_count'] ?? null,
+            'title'      => $data['title'] ?? 'Sin título',
+            'url'        => $data['webpage_url'] ?? $url,
+            'duration'   => is_numeric($data['duration']) ? (int)$data['duration'] : null,
+            'uploader'   => $data['uploader'] ?? '',
+            'thumbnail'  => $data['thumbnail'] ?? null,
+            'view_count' => is_numeric($data['view_count']) ? (int)$data['view_count'] : null,
         ];
     }
 

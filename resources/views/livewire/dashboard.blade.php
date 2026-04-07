@@ -29,18 +29,9 @@
                 <div class="flex flex-wrap items-center gap-3">
                     <span class="text-xs text-slate-400 font-medium uppercase tracking-wider">Formato:</span>
                     <div class="flex items-center gap-2">
-                        <label class="format-pill @if($audioFormat === 'mp3') format-pill-active @endif cursor-pointer">
-                            <input type="radio" wire:model="audioFormat" value="mp3" class="sr-only">
-                            🎵 MP3
-                        </label>
-                        <label class="format-pill @if($audioFormat === 'flac') format-pill-active @endif cursor-pointer">
-                            <input type="radio" wire:model="audioFormat" value="flac" class="sr-only">
-                            💎 FLAC
-                        </label>
-                        <label class="format-pill @if($audioFormat === 'ogg') format-pill-active @endif cursor-pointer">
-                            <input type="radio" wire:model="audioFormat" value="ogg" class="sr-only">
-                            🔊 OGG
-                        </label>
+                        <button type="button" wire:click="$set('audioFormat', 'mp3')" class="format-pill {{ $audioFormat === 'mp3' ? 'format-pill-active' : '' }}">🎵 MP3</button>
+                        <button type="button" wire:click="$set('audioFormat', 'flac')" class="format-pill {{ $audioFormat === 'flac' ? 'format-pill-active' : '' }}">💎 FLAC</button>
+                        <button type="button" wire:click="$set('audioFormat', 'ogg')" class="format-pill {{ $audioFormat === 'ogg' ? 'format-pill-active' : '' }}">🔊 OGG</button>
                     </div>
                     <span class="text-xs text-slate-500 ml-auto hidden sm:block">
                         @if($audioFormat === 'mp3') Compatible con todos los dispositivos
@@ -486,7 +477,7 @@
                             class="w-full h-10 rounded-lg"
                             style="filter: hue-rotate(200deg) saturate(1.5);"
                         >
-                            <source src="{{ route('track.play', ['filename' => $item['filename']]) }}" type="audio/{{ ($item['audio_format'] ?? 'mp3') === 'ogg' ? 'ogg' : ($item['audio_format'] ?? 'mpeg') === 'flac' ? 'flac' : 'mpeg' }}">
+                            <source src="{{ route('track.play', ['filename' => $item['filename']]) }}" type="audio/{{ match($item['audio_format'] ?? 'mp3') { 'ogg' => 'ogg', 'flac' => 'flac', default => 'mpeg' } }}">
                             Tu navegador no soporta la reproducción de audio.
                         </audio>
                     </div>
