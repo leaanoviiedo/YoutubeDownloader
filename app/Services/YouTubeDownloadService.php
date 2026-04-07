@@ -8,17 +8,38 @@ use Illuminate\Support\Str;
 
 class YouTubeDownloadService
 {
+    private string $cookiesFile;
+    private bool   $hasCookies;
+
+    public function __construct()
+    {
+        $this->cookiesFile = storage_path('app/youtube_cookies.txt');
+        $this->hasCookies  = file_exists($this->cookiesFile);
+    }
+
+    /**
+     * Build a yt-dlp command array, injecting --cookies if the file exists.
+     */
+    private function ytdlp(array $args): array
+    {
+        $base = ['yt-dlp'];
+        if ($this->hasCookies) {
+            $base[] = '--cookies';
+            $base[] = $this->cookiesFile;
+        }
+        return array_merge($base, $args);
+    }
+
     /**
      * Get the playlist title from a YouTube URL.
      */
     public function getPlaylistTitle(string $url): string
     {
-        $process = new Process([
-            'yt-dlp',
+        $process = new Process($this->ytdlp([
             '--print', 'playlist_title',
             '--playlist-items', '1',
             $url
-        ]);
+        ]));
 
         $process->setTimeout(60);
         $process->run();
@@ -34,12 +55,11 @@ class YouTubeDownloadService
 
     public function getPlaylistInfo(string $url): array
     {
-        $process = new Process([
-            'yt-dlp',
+        $process = new Process($this->ytdlp([
             '--dump-json',
             '--flat-playlist',
             $url
-        ]);
+        ]));
 
         $process->setTimeout(120);
         $process->run();
@@ -61,13 +81,12 @@ class YouTubeDownloadService
     public function getSingleTrackInfo(string $url): array
     {
         // Use pipe-separated fields — avoids JSON template + stderr mixing issue
-        $process = new Process([
-            'yt-dlp',
+        $process = new Process($this->ytdlp([
             '--no-playlist',
             '--flat-playlist',
             '--print', '%(title)s|||%(webpage_url)s|||%(duration)s|||%(uploader)s|||%(thumbnail)s|||%(view_count)s',
             $url
-        ]);
+        ]));
 
         $process->setTimeout(30);
         $process->run();
@@ -77,13 +96,12 @@ class YouTubeDownloadService
 
         if (!$process->isSuccessful() || empty($stdout)) {
             // Fallback: try without --flat-playlist
-            $process2 = new Process([
-                'yt-dlp',
+            $process2 = new Process($this->ytdlp([
                 '--no-playlist',
                 '--skip-download',
                 '--print', '%(title)s|||%(webpage_url)s|||%(duration)s|||%(uploader)s|||%(thumbnail)s|||%(view_count)s',
                 $url
-            ]);
+            ]));
             $process2->setTimeout(60);
             $process2->run();
 
@@ -122,12 +140,11 @@ class YouTubeDownloadService
      */
     public function searchVideos(string $query, int $limit = 10): array
     {
-        $process = new Process([
-            'yt-dlp',
+        $process = new Process($this->ytdlp([
             '--flat-playlist',
             '--print', '%(title)s|||%(id)s|||%(url)s|||%(duration)s|||%(channel)s|||%(thumbnail)s|||%(view_count)s',
             "ytsearch{$limit}:{$query}"
-        ]);
+        ]));
 
         $process->setTimeout(60);
         $process->run();
@@ -205,15 +222,14 @@ class YouTubeDownloadService
 
         $template = $downloadsDir . '/' . $outputTemplate . '.%(ext)s';
 
-        $process = new Process([
-            'yt-dlp',
+        $process = new Process($this->ytdlp([
             '-x',
             '--audio-format', $audioFormat,
             '--audio-quality', $qualityArg,
             '-o', $template,
             '--no-playlist',
             $url
-        ]);
+        ]));
 
         $process->setTimeout(3600);
         $process->run(function ($type, $buffer) use ($onProgress) {

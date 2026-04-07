@@ -183,8 +183,19 @@ sudo docker compose up --build -d
 
 ---
 
-## ⚠️ Notas Importantes
+## ⚠️ Notas Importantes y Solución de Problemas
 
+### Bloqueo de YouTube (Bot Detection / Sign in request)
+Si al descargar una canción (o usar la búsqueda) te aparece el error **"YouTube está bloqueando el servidor por detección de bots"** o pide inicio de sesión, significa que la IP del servidor fue limitada por exceso de peticiones. 
+**Solución:**
+1. Instalá en tu navegador web la extensión **Get cookies.txt LOCALLY**.
+2. Entrá a youtube.com (asegurate de tener tu sesión iniciada).
+3. Hacé clic en la extensión y exportá las cookies.
+4. Renombrá el archivo descargado a `youtube_cookies.txt`.
+5. Colocá este archivo dentro de la carpeta `storage/app/` de este proyecto.
+La aplicación lo detectará automáticamente y usará tu sesión para evadir el bloqueo.
+
+### Otras notas:
 - Los archivos MP3 se guardan en `storage/app/downloads/{nombre-playlist}/`.
 - El ZIP se descarga con el nombre de la playlist.
 - La APP_KEY se genera automáticamente en el primer inicio.

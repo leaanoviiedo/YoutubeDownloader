@@ -1,61 +1,69 @@
 <?php
 
 use App\Livewire\Dashboard;
+use App\Livewire\AudioEditor;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Response;
 
-Route::get('/', Dashboard::class);
+Route::get('/', Dashboard::class)->name('home');
+Route::get('/editor', AudioEditor::class)->name('audio.editor');
 
-// Download individual track (supports subfolder paths like "playlist_name/track.mp3")
+// Download individual track (supports subfolder paths)
 Route::get('/download/{path}', function (string $path) {
     $fullPath = storage_path('app/downloads/' . $path);
-    
-    if (!file_exists($fullPath)) {
-        abort(404, 'Archivo no encontrado');
-    }
+    if (!file_exists($fullPath)) abort(404, 'Archivo no encontrado');
 
-    return Response::download($fullPath, basename($path), [
-        'Content-Type' => 'audio/mpeg',
-    ]);
+    $ext = strtolower(pathinfo($fullPath, PATHINFO_EXTENSION));
+    $mime = match ($ext) {
+        'flac' => 'audio/flac',
+        'ogg'  => 'audio/ogg',
+        'wav'  => 'audio/wav',
+        'aac', 'm4a' => 'audio/aac',
+        default => 'audio/mpeg',
+    };
+
+    return Response::download($fullPath, basename($path), ['Content-Type' => $mime]);
 })->where('path', '.*')->name('track.download');
 
-// Stream audio for playback (supports subfolder paths)
+// Stream audio for playback
 Route::get('/play/{path}', function (string $path) {
     $fullPath = storage_path('app/downloads/' . $path);
-    
-    if (!file_exists($fullPath)) {
-        abort(404, 'Archivo no encontrado');
-    }
+    if (!file_exists($fullPath)) abort(404, 'Archivo no encontrado');
 
-    return Response::file($fullPath, [
-        'Content-Type' => 'audio/mpeg',
-    ]);
+    $ext = strtolower(pathinfo($fullPath, PATHINFO_EXTENSION));
+    $mime = match ($ext) {
+        'flac' => 'audio/flac',
+        'ogg'  => 'audio/ogg',
+        'wav'  => 'audio/wav',
+        'aac', 'm4a' => 'audio/aac',
+        default => 'audio/mpeg',
+    };
+
+    return Response::file($fullPath, ['Content-Type' => $mime]);
 })->where('path', '.*')->name('track.play');
 
-// Download all as ZIP with playlist name
+// Download all as ZIP
 Route::get('/download-all', function () {
-    $downloadsPath = storage_path('app/downloads');
+    $downloadsPath  = storage_path('app/downloads');
     $playlistFolder = \Illuminate\Support\Facades\Redis::get('current_playlist_folder') ?? '';
-    $playlistName = \Illuminate\Support\Facades\Redis::get('current_playlist_name') ?? 'playlist';
-    $zipName = \Illuminate\Support\Str::slug($playlistName, '_') . '.zip';
+    $playlistName   = \Illuminate\Support\Facades\Redis::get('current_playlist_name') ?? 'playlist';
+    $zipName        = \Illuminate\Support\Str::slug($playlistName, '_') . '.zip';
 
-    // Search in the playlist subfolder if available, otherwise root
     $searchDir = !empty($playlistFolder) ? $downloadsPath . '/' . $playlistFolder : $downloadsPath;
-    $files = glob($searchDir . '/*.mp3');
 
-    if (empty($files)) {
-        abort(404, 'No hay archivos para descargar');
+    $files = [];
+    foreach (['mp3', 'flac', 'ogg', 'wav', 'aac', 'm4a'] as $ext) {
+        $files = array_merge($files, glob($searchDir . '/*.' . $ext) ?: []);
     }
 
-    $zipPath = $downloadsPath . '/' . $zipName;
+    if (empty($files)) abort(404, 'No hay archivos para descargar');
 
+    $zipPath = storage_path('app/' . $zipName);
     $zip = new \ZipArchive();
     $zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
-    
     foreach ($files as $file) {
         $zip->addFile($file, basename($file));
     }
-    
     $zip->close();
 
     return Response::download($zipPath, $zipName)->deleteFileAfterSend();
