@@ -162,6 +162,17 @@ class Dashboard extends Component
         $this->selectedTracks = [];
     }
 
+    public function toggleTrack(int $index): void
+    {
+        if (in_array($index, $this->selectedTracks)) {
+            $this->selectedTracks = array_diff($this->selectedTracks, [$index]);
+            $this->selectedTracks = array_values($this->selectedTracks);
+        } else {
+            $this->selectedTracks[] = $index;
+            $this->selectedTracks = array_values($this->selectedTracks);
+        }
+    }
+
     public function processSelected(): void
     {
         if (empty($this->selectedTracks)) {
