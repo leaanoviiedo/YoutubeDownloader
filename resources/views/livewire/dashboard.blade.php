@@ -90,24 +90,24 @@
 
             {{-- DOS BOTONES --}}
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {{-- Botón 1: Descarga rápida (sin preview) --}}
-                <button wire:click="quickDownloadSingle" id="btn-quick"
-                    wire:loading.attr="disabled" wire:target="quickDownloadSingle,enablePreview"
+                {{-- Botón 1: Ver info de esta canción (limpia el &list=) --}}
+                <button wire:click="fetchSingleTrack" id="btn-quick"
+                    wire:loading.attr="disabled" wire:target="fetchSingleTrack,enablePreview"
                     class="flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-medium text-sm transition-all
                            bg-gradient-to-r from-emerald-600/20 to-teal-600/10 border border-emerald-500/30 text-emerald-300
                            hover:from-emerald-600/35 hover:to-teal-600/20 hover:border-emerald-400/50 hover:text-emerald-200">
-                    <span wire:loading.remove wire:target="quickDownloadSingle">
-                        ⚡ Descargar solo esta canción
+                    <span wire:loading.remove wire:target="fetchSingleTrack">
+                        🎵 Solo esta canción
                     </span>
-                    <span wire:loading wire:target="quickDownloadSingle" class="flex items-center gap-2">
+                    <span wire:loading wire:target="fetchSingleTrack" class="flex items-center gap-2">
                         <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                        Iniciando...
+                        Buscando info...
                     </span>
                 </button>
 
                 {{-- Botón 2: Ver playlist completa (con preview) --}}
                 <button wire:click="enablePreview" id="btn-playlist"
-                    wire:loading.attr="disabled" wire:target="quickDownloadSingle,enablePreview"
+                    wire:loading.attr="disabled" wire:target="fetchSingleTrack,enablePreview"
                     class="flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-medium text-sm transition-all
                            bg-gradient-to-r from-blue-600/20 to-indigo-600/10 border border-blue-500/30 text-blue-300
                            hover:from-blue-600/35 hover:to-indigo-600/20 hover:border-blue-400/50 hover:text-blue-200">

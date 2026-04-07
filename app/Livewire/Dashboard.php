@@ -54,62 +54,43 @@ class Dashboard extends Component
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Quick Single Download (skips preview, goes directly to worker)
+    // Single Track Preview (strips list param, shows info panel like playlist)
     // ─────────────────────────────────────────────────────────────────────────
 
-    public function quickDownloadSingle(): void
+    public function fetchSingleTrack(): void
     {
         $this->validate(['url' => 'required|url'], [
             'url.required' => 'Ingresá una URL de YouTube',
-            'url.url'      => 'La URL no es válida',
+            'url.url'      => 'El formato de la URL no es válido',
         ]);
 
         $this->errorMsg = null;
+        $this->previewing = true;
+        $this->previewTracks = [];
+        $this->selectedTracks = [];
+        $this->playlistTitle = null;
 
-        // Strip list= param so yt-dlp only downloads this video
+        // Strip &list= param — only download this specific video
         $cleanUrl = $this->url;
         if (str_contains($cleanUrl, 'list=')) {
-            // Extract just the video ID and rebuild a clean URL
-            parse_str(parse_url($cleanUrl, PHP_URL_QUERY), $params);
+            parse_str(parse_url($cleanUrl, PHP_URL_QUERY) ?? '', $params);
             if (!empty($params['v'])) {
                 $cleanUrl = 'https://www.youtube.com/watch?v=' . $params['v'];
             }
         }
 
-        $id = md5($cleanUrl . uniqid());
-
-        // Use video ID or URL hash as temporary title
-        $tempTitle = 'Canción ' . substr(md5($cleanUrl), 0, 6);
-        parse_str(parse_url($cleanUrl, PHP_URL_QUERY), $qp);
-        if (!empty($qp['v'])) {
-            $tempTitle = 'Video ' . $qp['v'];
-        }
-
-        // Store initial status immediately (worker will update with real title)
         try {
-            \Illuminate\Support\Facades\Redis::hset('download_status', $id, json_encode([
-                'id'       => $id,
-                'title'    => $tempTitle,
-                'status'   => 'queued',
-                'progress' => 0,
-                'added_at' => now()->timestamp,
-                'format'   => strtoupper($this->audioFormat),
-                'audio_format' => $this->audioFormat,
-            ]));
-        } catch (\Exception) {
-            // Redis may not be available in dev
+            $service = app(YouTubeDownloadService::class);
+            $info = $service->getSingleTrackInfo($cleanUrl);
+            // Ensure the URL key uses the clean URL
+            $info['url'] = $cleanUrl;
+            $this->playlistTitle = $info['title'] ?? 'Video';
+            $this->previewTracks = [$info];
+            $this->selectedTracks = [0];
+        } catch (\Exception $e) {
+            $this->errorMsg = $this->humanizeError($e->getMessage());
+            $this->previewing = false;
         }
-
-        \App\Jobs\DownloadTrackJob::dispatch(
-            $cleanUrl,
-            $tempTitle,
-            'Descargas',
-            $this->audioFormat,
-            $this->audioBitrate
-        );
-
-        $this->url = '';
-        $this->dispatch('notify', '⚡ Descarga iniciada — aparecerá en la cola en segundos');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -141,26 +122,21 @@ class Dashboard extends Component
     {
         try {
             $service = app(YouTubeDownloadService::class);
-            
-            // Re-fetch info to ensure we have duration/thumbnail
             $info = $service->getSingleTrackInfo($url);
-            
+
             $trackData = [
-                'id'         => (string) Str::uuid(),
                 'url'        => $url,
                 'title'      => $info['title'] ?? $title,
                 'duration'   => $info['duration'] ?? null,
                 'thumbnail'  => $info['thumbnail'] ?? null,
-                'channel'    => $info['uploader'] ?? '',
+                'uploader'   => $info['uploader'] ?? '',
                 'view_count' => $info['view_count'] ?? null,
             ];
 
             $this->queueTrack($trackData, 'Busquedas');
-            
-            $this->dispatch('notify', '🎵 Descargando: ' . $title);
-            $this->fetchDownloads();
+            $this->dispatch('notify', '🎵 Descargando: ' . ($trackData['title']));
         } catch (\Exception $e) {
-            $this->errorMsg = "Error al descargar $title: " . $this->humanizeError($e->getMessage());
+            $this->errorMsg = "Error al descargar: " . $this->humanizeError($e->getMessage());
         }
     }
 
@@ -277,26 +253,31 @@ class Dashboard extends Component
 
     private function queueTrack(array $trackData, string $folder): void
     {
-        $initialData = [
-            'id'       => $trackData['id'],
-            'title'    => $trackData['title'],
-            'status'   => 'queued',
-            'progress' => '0%',
-            'added_at' => now()->timestamp,
-            'format'   => strtoupper($this->audioFormat),
-            'bitrate'  => $this->audioBitrate,
-            'thumbnail'=> $trackData['thumbnail'] ?? null,
-            'duration' => $trackData['duration'] ?? null,
-            'channel'  => $trackData['uploader'] ?? $trackData['channel'] ?? null,
-        ];
+        $trackUrl   = $trackData['url'] ?? $trackData['webpage_url'] ?? '';
+        $trackTitle = $trackData['title'] ?? 'Sin título';
 
-        Redis::hset('download_status', $trackData['id'], json_encode($initialData));
+        // Use md5(url) as ID — SAME as what DownloadTrackJob uses internally
+        // This ensures both refer to the same Redis key (no duplicate entries)
+        $id = md5($trackUrl);
 
+        Redis::hset('download_status', $id, json_encode([
+            'id'        => $id,
+            'title'     => $trackTitle,
+            'status'    => 'queued',
+            'progress'  => 0,
+            'added_at'  => now()->timestamp,
+            'format'    => strtoupper($this->audioFormat),
+            'thumbnail' => $trackData['thumbnail'] ?? null,
+            'duration'  => $trackData['duration'] ?? null,
+            'channel'   => $trackData['uploader'] ?? $trackData['channel'] ?? null,
+        ]));
+
+        // Dispatch with url + title strings (matches Job constructor signature)
         DownloadTrackJob::dispatch(
-            $trackData,
-            $this->audioFormat,
+            $trackUrl,
+            $trackTitle,
             $folder,
-            $trackData['id'],
+            $this->audioFormat,
             $this->audioBitrate
         );
     }
