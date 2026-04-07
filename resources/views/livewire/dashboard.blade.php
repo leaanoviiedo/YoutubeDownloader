@@ -17,9 +17,13 @@
                     placeholder="Pegá la URL de la playlist de YouTube aquí..." 
                     class="glass-input flex-1 text-lg"
                     id="playlist-url-input"
+                    @if($loading) disabled @endif
                 >
-                <button type="submit" id="download-btn" class="glass-button text-lg flex items-center justify-center gap-2" wire:loading.attr="disabled" wire:target="fetchPlaylist">
-                    <span wire:loading.remove wire:target="fetchPlaylist">Buscar Playlist</span>
+                <button type="submit" id="download-btn" class="glass-button text-lg flex items-center justify-center gap-2" wire:loading.attr="disabled" wire:target="fetchPlaylist" @if($loading) disabled @endif>
+                    <span wire:loading.remove wire:target="fetchPlaylist">
+                        <svg class="h-5 w-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                        Buscar Playlist
+                    </span>
                     <span wire:loading wire:target="fetchPlaylist" class="flex items-center gap-2">
                         <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24">
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
@@ -33,15 +37,64 @@
         </div>
     @endif
 
-    <!-- Estado de Carga -->
+    <!-- Estado de Carga Mejorado -->
     @if($loading)
-        <div class="glass-card p-8 mb-8 text-center">
-            <div class="flex items-center justify-center gap-3 text-blue-300">
-                <svg class="animate-spin h-6 w-6" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span class="text-lg font-medium">Obteniendo canciones de la playlist...</span>
+        <div class="glass-card p-8 mb-8 animate-fade-in">
+            <div class="flex flex-col items-center gap-4">
+                <div class="relative">
+                    <div class="w-16 h-16 rounded-full border-4 border-blue-500/20 flex items-center justify-center">
+                        <svg class="animate-spin h-8 w-8 text-blue-400" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </div>
+                    <div class="absolute inset-0 rounded-full border-4 border-blue-400/30 animate-ping"></div>
+                </div>
+                <div class="text-center">
+                    <p class="text-lg font-semibold text-white mb-1">Buscando playlist en YouTube...</p>
+                    <p class="text-sm text-slate-400">Esto puede tomar unos segundos dependiendo del tamaño de la playlist</p>
+                </div>
+                <div class="w-full max-w-xs overflow-hidden h-1.5 rounded-full bg-white/5">
+                    <div class="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 animate-loading-bar"></div>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    <!-- Estado de Error -->
+    @if($errorMessage && !$loading)
+        <div class="glass-card p-6 mb-8 border border-red-500/30 animate-fade-in">
+            <div class="flex items-start gap-4">
+                <div class="flex-shrink-0 w-12 h-12 rounded-full bg-red-500/15 flex items-center justify-center">
+                    <svg class="h-6 w-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                    </svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <h3 class="text-base font-semibold text-red-400 mb-1">Error al buscar la playlist</h3>
+                    <p class="text-sm text-slate-300">{{ $errorMessage }}</p>
+                </div>
+                <button 
+                    wire:click="$set('errorMessage', null)" 
+                    class="flex-shrink-0 text-slate-500 hover:text-white transition-colors p-1"
+                    title="Cerrar"
+                >
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <div class="mt-4 flex items-center gap-3">
+                <button 
+                    wire:click="$set('errorMessage', null)" 
+                    class="text-sm bg-red-500/20 hover:bg-red-500/30 text-red-300 hover:text-red-200 px-4 py-2 rounded-lg transition-all flex items-center gap-2"
+                >
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    Reintentar
+                </button>
+                <span class="text-xs text-slate-500">Cerrá este mensaje para ingresar otra URL</span>
             </div>
         </div>
     @endif
@@ -367,8 +420,14 @@
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
 }
+@keyframes loading-bar {
+    0% { width: 0%; margin-left: 0%; }
+    50% { width: 60%; margin-left: 20%; }
+    100% { width: 0%; margin-left: 100%; }
+}
 .animate-fade-in { animation: fade-in 0.8s ease-out forwards; }
 .animate-slide-up { animation: slide-up 0.3s ease-out forwards; }
+.animate-loading-bar { animation: loading-bar 1.8s ease-in-out infinite; }
 .custom-scrollbar::-webkit-scrollbar { width: 6px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }

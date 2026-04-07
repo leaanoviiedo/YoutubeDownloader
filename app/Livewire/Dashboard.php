@@ -18,6 +18,7 @@ class Dashboard extends Component
     public ?string $playingTrack = null;
     public string $playlistUrl = '';
     public string $playlistName = '';
+    public ?string $errorMessage = null;
 
     public function mount(): void
     {
@@ -35,6 +36,7 @@ class Dashboard extends Component
         $this->loading = true;
         $this->previewing = false;
         $this->previewTracks = [];
+        $this->errorMessage = null;
 
         try {
             $service = app(YouTubeDownloadService::class);
@@ -57,12 +59,30 @@ class Dashboard extends Component
                 ];
             }
 
+            if (empty($this->previewTracks)) {
+                $this->errorMessage = 'No se encontraron canciones en la playlist. Verificá que la URL sea correcta y que la playlist sea pública.';
+                $this->loading = false;
+                return;
+            }
+
             $this->playlistUrl = $this->url;
             $this->url = '';
             $this->previewing = true;
             $this->dispatch('notify', count($this->previewTracks) . ' canciones encontradas');
         } catch (\Exception $e) {
-            $this->dispatch('notify', 'Error: ' . $e->getMessage());
+            $errorMsg = $e->getMessage();
+
+            if (str_contains($errorMsg, 'not found') || str_contains($errorMsg, 'No such file')) {
+                $this->errorMessage = 'El servicio de descarga (yt-dlp) no está disponible. Contactá al administrador del sistema.';
+            } elseif (str_contains($errorMsg, 'is not a valid URL') || str_contains($errorMsg, 'Unsupported URL')) {
+                $this->errorMessage = 'La URL ingresada no es válida o no corresponde a una playlist de YouTube.';
+            } elseif (str_contains($errorMsg, 'HTTP Error') || str_contains($errorMsg, 'network') || str_contains($errorMsg, 'URLError')) {
+                $this->errorMessage = 'Error de conexión. Verificá tu conexión a internet e intentá de nuevo.';
+            } elseif (str_contains($errorMsg, 'Private') || str_contains($errorMsg, 'unavailable')) {
+                $this->errorMessage = 'La playlist es privada o no está disponible. Verificá que sea una playlist pública.';
+            } else {
+                $this->errorMessage = 'Ocurrió un error al buscar la playlist. Detalle: ' . \Illuminate\Support\Str::limit($errorMsg, 150);
+            }
         }
 
         $this->loading = false;
