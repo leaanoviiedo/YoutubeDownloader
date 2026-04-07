@@ -22,7 +22,8 @@ class DownloadTrackJob implements ShouldQueue
         protected string $url,
         protected string $title,
         protected string $playlistFolder = '',
-        protected string $audioFormat = 'mp3'
+        protected string $audioFormat    = 'mp3',
+        protected string $audioBitrate   = 'best'
     ) {
     }
 
@@ -39,51 +40,61 @@ class DownloadTrackJob implements ShouldQueue
             }
         }
 
-        // Sanitize the title for use as filename
         $safeTitle = Str::slug($this->title, '_');
         if (empty($safeTitle)) {
             $safeTitle = 'track_' . $id;
         }
 
         Redis::hset('download_status', $id, json_encode([
-            'title' => $this->title,
-            'status' => 'downloading',
-            'progress' => 0,
-            'playlist_folder' => $this->playlistFolder,
-            'audio_format' => $this->audioFormat,
+            'title'          => $this->title,
+            'status'         => 'downloading',
+            'progress'       => 0,
+            'playlist_folder'=> $this->playlistFolder,
+            'audio_format'   => $this->audioFormat,
+            'audio_bitrate'  => $this->audioBitrate,
         ]));
 
         try {
-            $filename = $service->downloadTrack($this->url, $safeTitle, $this->playlistFolder, function ($buffer) use ($id) {
-                if (preg_match('/\[download\]\s+(\d+\.?\d*)%/', $buffer, $matches)) {
-                    $progress = floatval($matches[1]);
-                    Redis::hset('download_status', $id, json_encode([
-                        'title' => $this->title,
-                        'status' => 'downloading',
-                        'progress' => $progress,
-                        'playlist_folder' => $this->playlistFolder,
-                        'audio_format' => $this->audioFormat,
-                    ]));
-                }
-            }, $this->audioFormat);
+            $filename = $service->downloadTrack(
+                $this->url,
+                $safeTitle,
+                $this->playlistFolder,
+                function ($buffer) use ($id) {
+                    if (preg_match('/\[download\]\s+(\d+\.?\d*)%/', $buffer, $matches)) {
+                        $progress = floatval($matches[1]);
+                        Redis::hset('download_status', $id, json_encode([
+                            'title'          => $this->title,
+                            'status'         => 'downloading',
+                            'progress'       => $progress,
+                            'playlist_folder'=> $this->playlistFolder,
+                            'audio_format'   => $this->audioFormat,
+                            'audio_bitrate'  => $this->audioBitrate,
+                        ]));
+                    }
+                },
+                $this->audioFormat,
+                $this->audioBitrate
+            );
 
             Redis::hset('download_status', $id, json_encode([
-                'title' => $this->title,
-                'status' => 'completed',
-                'progress' => 100,
-                'filename' => $filename,
-                'playlist_folder' => $this->playlistFolder,
-                'audio_format' => $this->audioFormat,
+                'title'          => $this->title,
+                'status'         => 'completed',
+                'progress'       => 100,
+                'filename'       => $filename,
+                'playlist_folder'=> $this->playlistFolder,
+                'audio_format'   => $this->audioFormat,
+                'audio_bitrate'  => $this->audioBitrate,
             ]));
 
         } catch (\Exception $e) {
             Log::error("Error al descargar {$this->title}: " . $e->getMessage());
             Redis::hset('download_status', $id, json_encode([
-                'title' => $this->title,
-                'status' => 'failed',
-                'error' => $e->getMessage(),
-                'playlist_folder' => $this->playlistFolder,
-                'audio_format' => $this->audioFormat,
+                'title'          => $this->title,
+                'status'         => 'failed',
+                'error'          => $e->getMessage(),
+                'playlist_folder'=> $this->playlistFolder,
+                'audio_format'   => $this->audioFormat,
+                'audio_bitrate'  => $this->audioBitrate,
             ]));
         }
     }

@@ -25,12 +25,22 @@ class Dashboard extends Component
     public bool $singleMode = false;
     public array $singleTrackInfo = [];
 
-    // Audio format selector
-    public string $audioFormat = 'mp3';
+    // Audio options
+    public string $audioFormat  = 'mp3';
+    public string $audioBitrate = 'best'; // best | 320k | 192k | 128k
+
+    // Playlist track selection
+    public array $selectedTracks = [];  // array of int indices
+
+    // Search feature
+    public string $activeTab     = 'download'; // 'download' | 'search'
+    public string $searchQuery   = '';
+    public array  $searchResults = [];
+    public bool   $searching     = false;
+    public ?string $searchError  = null;
 
     public function mount(): void
     {
-        // Recover playlist name from Redis
         $this->playlistName = Redis::get('current_playlist_name') ?? '';
         $this->fetchDownloads();
     }
@@ -48,6 +58,7 @@ class Dashboard extends Component
         $this->singleMode = false;
         $this->singleTrackInfo = [];
         $this->previewTracks = [];
+        $this->selectedTracks = [];
         $this->errorMessage = null;
 
         try {
@@ -71,7 +82,6 @@ class Dashboard extends Component
 
         $track = $this->singleTrackInfo;
         $id = md5($track['url']);
-        $safeTitle = Str::slug($track['title'], '_') ?: 'track_' . $id;
 
         Redis::hset('download_status', $id, json_encode([
             'title'          => $track['title'],
@@ -79,9 +89,10 @@ class Dashboard extends Component
             'progress'       => 0,
             'playlist_folder'=> '',
             'audio_format'   => $this->audioFormat,
+            'audio_bitrate'  => $this->audioBitrate,
         ]));
 
-        DownloadTrackJob::dispatch($track['url'], $track['title'], '', $this->audioFormat);
+        DownloadTrackJob::dispatch($track['url'], $track['title'], '', $this->audioFormat, $this->audioBitrate);
 
         $this->singleTrackInfo = [];
         $this->singleMode = false;
@@ -112,14 +123,13 @@ class Dashboard extends Component
         $this->singleMode = false;
         $this->singleTrackInfo = [];
         $this->previewTracks = [];
+        $this->selectedTracks = [];
         $this->errorMessage = null;
 
         try {
             $service = app(YouTubeDownloadService::class);
 
-            // Get playlist title first
             $this->playlistName = $service->getPlaylistTitle($this->url);
-
             $tracks = $service->getPlaylistInfo($this->url);
 
             $this->previewTracks = [];
@@ -141,6 +151,9 @@ class Dashboard extends Component
                 return;
             }
 
+            // Select all tracks by default
+            $this->selectedTracks = array_keys($this->previewTracks);
+
             $this->playlistUrl = $this->url;
             $this->url = '';
             $this->previewing = true;
@@ -152,16 +165,44 @@ class Dashboard extends Component
         $this->loading = false;
     }
 
+    // Track selection helpers
+    public function toggleTrack(int $index): void
+    {
+        if (in_array($index, $this->selectedTracks)) {
+            $this->selectedTracks = array_values(array_filter(
+                $this->selectedTracks,
+                fn($i) => $i !== $index
+            ));
+        } else {
+            $this->selectedTracks[] = $index;
+        }
+    }
+
+    public function selectAll(): void
+    {
+        $this->selectedTracks = array_keys($this->previewTracks);
+    }
+
+    public function deselectAll(): void
+    {
+        $this->selectedTracks = [];
+    }
+
     public function startDownload(): void
     {
-        if (empty($this->previewTracks)) return;
+        if (empty($this->previewTracks) || empty($this->selectedTracks)) return;
 
         $playlistFolder = Str::slug($this->playlistName, '_');
         if (empty($playlistFolder)) {
             $playlistFolder = 'playlist_' . date('Y_m_d_His');
         }
 
-        foreach ($this->previewTracks as $track) {
+        $tracksToDownload = array_intersect_key(
+            $this->previewTracks,
+            array_flip($this->selectedTracks)
+        );
+
+        foreach ($tracksToDownload as $track) {
             $id = md5($track['url']);
             Redis::hset('download_status', $id, json_encode([
                 'title'          => $track['title'],
@@ -169,15 +210,61 @@ class Dashboard extends Component
                 'progress'       => 0,
                 'playlist_folder'=> $playlistFolder,
                 'audio_format'   => $this->audioFormat,
+                'audio_bitrate'  => $this->audioBitrate,
             ]));
+
+            DownloadTrackJob::dispatch($track['url'], $track['title'], $playlistFolder, $this->audioFormat, $this->audioBitrate);
         }
 
-        DownloadPlaylistJob::dispatch($this->playlistUrl, $this->audioFormat);
-
+        $count = count($tracksToDownload);
         $this->previewTracks = [];
+        $this->selectedTracks = [];
         $this->previewing = false;
         $this->playlistUrl = '';
-        $this->dispatch('notify', '¡Descargas iniciadas!');
+        $this->dispatch('notify', "¡{$count} descargas iniciadas!");
+        $this->fetchDownloads();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // YouTube Search
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function searchYouTube(): void
+    {
+        $this->validate(['searchQuery' => 'required|min:2']);
+
+        $this->searching = true;
+        $this->searchResults = [];
+        $this->searchError = null;
+
+        try {
+            $service = app(YouTubeDownloadService::class);
+            $this->searchResults = $service->searchVideos($this->searchQuery);
+
+            if (empty($this->searchResults)) {
+                $this->searchError = 'No se encontraron resultados para "' . $this->searchQuery . '"';
+            }
+        } catch (\Exception $e) {
+            $this->searchError = 'Error al buscar: ' . Str::limit($e->getMessage(), 100);
+        }
+
+        $this->searching = false;
+    }
+
+    public function downloadSearchResult(string $url, string $title): void
+    {
+        $id = md5($url);
+        Redis::hset('download_status', $id, json_encode([
+            'title'          => $title,
+            'status'         => 'queued',
+            'progress'       => 0,
+            'playlist_folder'=> '',
+            'audio_format'   => $this->audioFormat,
+            'audio_bitrate'  => $this->audioBitrate,
+        ]));
+
+        DownloadTrackJob::dispatch($url, $title, '', $this->audioFormat, $this->audioBitrate);
+        $this->dispatch('notify', 'Descarga agregada: ' . Str::limit($title, 35));
         $this->fetchDownloads();
     }
 
@@ -197,7 +284,6 @@ class Dashboard extends Component
         }
 
         Redis::del('queues:default');
-
         $this->dispatch('notify', 'Descargas detenidas');
         $this->fetchDownloads();
     }
@@ -205,6 +291,7 @@ class Dashboard extends Component
     public function cancelPreview(): void
     {
         $this->previewTracks = [];
+        $this->selectedTracks = [];
         $this->previewing = false;
         $this->playlistUrl = '';
         $this->playlistName = '';
@@ -227,7 +314,6 @@ class Dashboard extends Component
                     @unlink($file);
                 }
             }
-
             $subdirs = glob($dir . '/*', GLOB_ONLYDIR);
             foreach ($subdirs as $subdir) {
                 foreach ($patterns as $pattern) {
@@ -238,33 +324,6 @@ class Dashboard extends Component
                 @rmdir($subdir);
             }
         }
-    }
-
-    public function downloadZip(): \Symfony\Component\HttpFoundation\BinaryFileResponse
-    {
-        $dir = storage_path('app/downloads');
-        $playlistFolder = Redis::get('current_playlist_folder') ?? '';
-        $playlistName = Redis::get('current_playlist_name') ?? 'playlist';
-        $zipName = Str::slug($playlistName, '_') . '.zip';
-
-        $searchDir = !empty($playlistFolder) ? $dir . '/' . $playlistFolder : $dir;
-        $zipPath = $dir . '/' . $zipName;
-
-        $zip = new \ZipArchive();
-        $zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
-
-        foreach ($this->downloads as $item) {
-            if ($item['status'] === 'completed' && isset($item['filename'])) {
-                $filePath = $dir . '/' . $item['filename'];
-                if (file_exists($filePath)) {
-                    $zip->addFile($filePath, basename($item['filename']));
-                }
-            }
-        }
-
-        $zip->close();
-
-        return response()->download($zipPath, $zipName)->deleteFileAfterSend();
     }
 
     public function playTrack(string $id): void
@@ -281,8 +340,7 @@ class Dashboard extends Component
 
         $subdirs = glob($dir . '/*', GLOB_ONLYDIR);
         foreach ($subdirs as $subdir) {
-            $folderName = basename($subdir);
-            $this->scanDirectoryForFiles($subdir, $folderName);
+            $this->scanDirectoryForFiles($subdir, basename($subdir));
         }
 
         $this->fetchDownloads();
@@ -290,10 +348,8 @@ class Dashboard extends Component
 
     private function scanDirectoryForFiles(string $dir, string $subfolder): void
     {
-        $extensions = ['mp3', 'flac', 'ogg'];
-        foreach ($extensions as $ext) {
-            $files = glob($dir . '/*.' . $ext);
-            foreach ($files as $file) {
+        foreach (['mp3', 'flac', 'ogg'] as $ext) {
+            foreach (glob($dir . '/*.' . $ext) as $file) {
                 $filename = basename($file);
                 $relativePath = !empty($subfolder) ? $subfolder . '/' . $filename : $filename;
                 $id = md5($relativePath);
@@ -325,7 +381,7 @@ class Dashboard extends Component
     private function humanizeError(string $errorMsg): string
     {
         if (str_contains($errorMsg, 'not found') || str_contains($errorMsg, 'No such file')) {
-            return 'El servicio de descarga (yt-dlp) no está disponible. Contactá al administrador del sistema.';
+            return 'El servicio de descarga (yt-dlp) no está disponible.';
         } elseif (str_contains($errorMsg, 'is not a valid URL') || str_contains($errorMsg, 'Unsupported URL')) {
             return 'La URL ingresada no es válida o no es compatible con YouTube.';
         } elseif (str_contains($errorMsg, 'HTTP Error') || str_contains($errorMsg, 'network') || str_contains($errorMsg, 'URLError')) {
