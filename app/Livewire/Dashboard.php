@@ -54,6 +54,65 @@ class Dashboard extends Component
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Quick Single Download (skips preview, goes directly to worker)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function quickDownloadSingle(): void
+    {
+        $this->validate(['url' => 'required|url'], [
+            'url.required' => 'Ingresá una URL de YouTube',
+            'url.url'      => 'La URL no es válida',
+        ]);
+
+        $this->errorMsg = null;
+
+        // Strip list= param so yt-dlp only downloads this video
+        $cleanUrl = $this->url;
+        if (str_contains($cleanUrl, 'list=')) {
+            // Extract just the video ID and rebuild a clean URL
+            parse_str(parse_url($cleanUrl, PHP_URL_QUERY), $params);
+            if (!empty($params['v'])) {
+                $cleanUrl = 'https://www.youtube.com/watch?v=' . $params['v'];
+            }
+        }
+
+        $id = md5($cleanUrl . uniqid());
+
+        // Use video ID or URL hash as temporary title
+        $tempTitle = 'Canción ' . substr(md5($cleanUrl), 0, 6);
+        parse_str(parse_url($cleanUrl, PHP_URL_QUERY), $qp);
+        if (!empty($qp['v'])) {
+            $tempTitle = 'Video ' . $qp['v'];
+        }
+
+        // Store initial status immediately (worker will update with real title)
+        try {
+            \Illuminate\Support\Facades\Redis::hset('download_status', $id, json_encode([
+                'id'       => $id,
+                'title'    => $tempTitle,
+                'status'   => 'queued',
+                'progress' => 0,
+                'added_at' => now()->timestamp,
+                'format'   => strtoupper($this->audioFormat),
+                'audio_format' => $this->audioFormat,
+            ]));
+        } catch (\Exception) {
+            // Redis may not be available in dev
+        }
+
+        \App\Jobs\DownloadTrackJob::dispatch(
+            $cleanUrl,
+            $tempTitle,
+            'Descargas',
+            $this->audioFormat,
+            $this->audioBitrate
+        );
+
+        $this->url = '';
+        $this->dispatch('notify', '⚡ Descarga iniciada — aparecerá en la cola en segundos');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Search Mode
     // ─────────────────────────────────────────────────────────────────────────
 
