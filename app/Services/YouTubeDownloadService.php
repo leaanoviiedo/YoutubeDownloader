@@ -56,28 +56,32 @@ class YouTubeDownloadService
 
     /**
      * Get metadata for a single video quickly.
-     * Uses --flat-playlist (instant) which avoids processing all formats.
+     * Uses pipe-separated --print fields to avoid JSON parsing issues with stderr.
      */
     public function getSingleTrackInfo(string $url): array
     {
+        // Use pipe-separated fields — avoids JSON template + stderr mixing issue
         $process = new Process([
             'yt-dlp',
             '--no-playlist',
             '--flat-playlist',
-            '--print', '{"title":%(title)j,"webpage_url":%(webpage_url)j,"duration":%(duration)j,"uploader":%(uploader)j,"thumbnail":%(thumbnail)j,"view_count":%(view_count)j}',
+            '--print', '%(title)s|||%(webpage_url)s|||%(duration)s|||%(uploader)s|||%(thumbnail)s|||%(view_count)s',
             $url
         ]);
 
         $process->setTimeout(30);
         $process->run();
 
-        // If flat-playlist fails, try without it (slightly slower but more compatible)
-        if (!$process->isSuccessful() || empty(trim($process->getOutput()))) {
+        // Parse stdout only (ignores stderr warnings like HTTP 429)
+        $stdout = trim($process->getOutput());
+
+        if (!$process->isSuccessful() || empty($stdout)) {
+            // Fallback: try without --flat-playlist
             $process2 = new Process([
                 'yt-dlp',
                 '--no-playlist',
                 '--skip-download',
-                '--print', '{"title":%(title)j,"webpage_url":%(webpage_url)j,"duration":%(duration)j,"uploader":%(uploader)j,"thumbnail":%(thumbnail)j,"view_count":%(view_count)j}',
+                '--print', '%(title)s|||%(webpage_url)s|||%(duration)s|||%(uploader)s|||%(thumbnail)s|||%(view_count)s',
                 $url
             ]);
             $process2->setTimeout(60);
@@ -86,31 +90,29 @@ class YouTubeDownloadService
             if (!$process2->isSuccessful()) {
                 throw new ProcessFailedException($process2);
             }
-            $output = trim($process2->getOutput());
-        } else {
-            $output = trim($process->getOutput());
+            $stdout = trim($process2->getOutput());
         }
 
-        $firstLine = strtok($output, "\n");
-        $data = json_decode($firstLine, true);
+        // Take first line (in case there's extra output)
+        $line = strtok($stdout, "\n");
+        $parts = explode('|||', $line);
 
-        if (!$data || empty($data['title'])) {
+        if (count($parts) < 2 || empty($parts[0])) {
             throw new \RuntimeException('No se pudo obtener información del video. Verificá que sea una URL válida de YouTube.');
         }
 
-        // Build URL from id if needed
-        $videoUrl = $data['webpage_url'] ?? '';
-        if (empty($videoUrl) || !str_starts_with($videoUrl, 'http')) {
-            $videoUrl = $url;
-        }
+        $duration   = isset($parts[2]) && is_numeric($parts[2]) ? (int)$parts[2] : null;
+        $viewCount  = isset($parts[5]) && is_numeric($parts[5]) ? (int)$parts[5] : null;
+        $videoUrl   = !empty($parts[1]) && str_starts_with($parts[1], 'http') ? $parts[1] : $url;
+        $thumbnail  = isset($parts[4]) && str_starts_with($parts[4], 'http') ? $parts[4] : null;
 
         return [
-            'title'      => $data['title'],
+            'title'      => $parts[0],
             'url'        => $videoUrl,
-            'duration'   => is_numeric($data['duration'] ?? null) ? (int)$data['duration'] : null,
-            'uploader'   => $data['uploader'] ?? '',
-            'thumbnail'  => $data['thumbnail'] ?? null,
-            'view_count' => is_numeric($data['view_count'] ?? null) ? (int)$data['view_count'] : null,
+            'duration'   => $duration,
+            'uploader'   => $parts[3] ?? '',
+            'thumbnail'  => $thumbnail,
+            'view_count' => $viewCount,
         ];
     }
 
@@ -123,7 +125,7 @@ class YouTubeDownloadService
         $process = new Process([
             'yt-dlp',
             '--flat-playlist',
-            '--print', '{"title":%(title)j,"id":%(id)j,"url":%(url)j,"duration":%(duration)j,"channel":%(channel)j,"thumbnail":%(thumbnail)j,"view_count":%(view_count)j}',
+            '--print', '%(title)s|||%(id)s|||%(url)s|||%(duration)s|||%(channel)s|||%(thumbnail)s|||%(view_count)s',
             "ytsearch{$limit}:{$query}"
         ]);
 
@@ -138,22 +140,28 @@ class YouTubeDownloadService
         foreach (explode("\n", trim($process->getOutput())) as $line) {
             $line = trim($line);
             if (empty($line)) continue;
-            $data = json_decode($line, true);
-            if (!$data || empty($data['title'])) continue;
 
-            // Build full URL from id if url is just the id
-            $url = $data['url'] ?? '';
-            if ($url && !str_starts_with($url, 'http')) {
-                $url = 'https://www.youtube.com/watch?v=' . ($data['id'] ?? $url);
+            $parts = explode('|||', $line);
+            if (count($parts) < 2 || empty($parts[0]) || $parts[0] === 'NA') continue;
+
+            // Build full URL from id
+            $id  = $parts[1] ?? '';
+            $url = $parts[2] ?? '';
+            if (!str_starts_with($url, 'http')) {
+                $url = "https://www.youtube.com/watch?v={$id}";
             }
 
+            $duration  = isset($parts[3]) && is_numeric($parts[3]) ? (int)(float)$parts[3] : null;
+            $viewCount = isset($parts[6]) && is_numeric($parts[6]) ? (int)$parts[6] : null;
+            $thumbnail = isset($parts[5]) && str_starts_with($parts[5], 'http') ? $parts[5] : "https://i.ytimg.com/vi/{$id}/mqdefault.jpg";
+
             $results[] = [
-                'title'      => $data['title'],
+                'title'      => $parts[0],
                 'url'        => $url,
-                'duration'   => is_numeric($data['duration']) ? (int)$data['duration'] : null,
-                'channel'    => $data['channel'] ?? '',
-                'thumbnail'  => $data['thumbnail'] ?? null,
-                'view_count' => is_numeric($data['view_count']) ? (int)$data['view_count'] : null,
+                'duration'   => $duration,
+                'channel'    => $parts[4] ?? '',
+                'thumbnail'  => $thumbnail,
+                'view_count' => $viewCount,
             ];
         }
 

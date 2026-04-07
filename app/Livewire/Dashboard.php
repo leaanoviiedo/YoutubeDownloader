@@ -380,16 +380,20 @@ class Dashboard extends Component
 
     private function humanizeError(string $errorMsg): string
     {
-        if (str_contains($errorMsg, 'not found') || str_contains($errorMsg, 'No such file')) {
-            return 'El servicio de descarga (yt-dlp) no está disponible.';
+        if (str_contains($errorMsg, 'yt-dlp: not found') || str_contains($errorMsg, 'No such file or directory')) {
+            return 'El servicio de descarga (yt-dlp) no está disponible. Contactá al administrador del sistema.';
         } elseif (str_contains($errorMsg, 'is not a valid URL') || str_contains($errorMsg, 'Unsupported URL')) {
             return 'La URL ingresada no es válida o no es compatible con YouTube.';
-        } elseif (str_contains($errorMsg, 'HTTP Error') || str_contains($errorMsg, 'network') || str_contains($errorMsg, 'URLError')) {
-            return 'Error de conexión. Verificá tu conexión a internet e intentá de nuevo.';
-        } elseif (str_contains($errorMsg, 'Private') || str_contains($errorMsg, 'unavailable')) {
+        } elseif (str_contains($errorMsg, 'Private video') || str_contains($errorMsg, 'This video is unavailable')) {
             return 'El video/playlist es privado o no está disponible.';
+        } elseif (str_contains($errorMsg, 'Sign in') || str_contains($errorMsg, 'age-restricted')) {
+            return 'Este video requiere inicio de sesión o tiene restricción de edad.';
+        } elseif (str_contains($errorMsg, 'Timed out') || str_contains($errorMsg, 'timed out')) {
+            return 'La búsqueda tardó demasiado. Intentá de nuevo.';
         } else {
-            return 'Ocurrió un error. Detalle: ' . Str::limit($errorMsg, 150);
+            // Show a real excerpt of the error, trimmed to be readable
+            $clean = preg_replace('/\[download\].*\n?/', '', $errorMsg);
+            return 'Error: ' . \Illuminate\Support\Str::limit(trim($clean), 200);
         }
     }
 
