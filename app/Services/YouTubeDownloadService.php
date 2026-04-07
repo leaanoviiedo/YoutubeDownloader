@@ -95,20 +95,41 @@ class YouTubeDownloadService
         $stdout = trim($process->getOutput());
 
         if (!$process->isSuccessful() || empty($stdout)) {
-            // Fallback: try without --flat-playlist
+            // First fallback: avoid flat-playlist
             $process2 = new Process($this->ytdlp([
                 '--no-playlist',
                 '--skip-download',
                 '--print', '%(title)s|||%(webpage_url)s|||%(duration)s|||%(uploader)s|||%(thumbnail)s|||%(view_count)s',
                 $url
             ]));
-            $process2->setTimeout(60);
+            $process2->setTimeout(30);
             $process2->run();
 
-            if (!$process2->isSuccessful()) {
+            if ($process2->isSuccessful() && !empty(trim($process2->getOutput()))) {
+                $stdout = trim($process2->getOutput());
+            } else {
+                // Secondary fallback: YouTube oEmbed API (avoids bot detection for preview metadata)
+                try {
+                    $response = \Illuminate\Support\Facades\Http::timeout(10)->get('https://www.youtube.com/oembed', [
+                        'url' => $url,
+                        'format' => 'json'
+                    ]);
+                    if ($response->successful()) {
+                        $data = $response->json();
+                        return [
+                            'title'      => $data['title'] ?? 'Video',
+                            'url'        => $url,
+                            'duration'   => null,
+                            'uploader'   => $data['author_name'] ?? '',
+                            'thumbnail'  => $data['thumbnail_url'] ?? "https://i.ytimg.com/vi/" . (preg_match('/(?:v=|youtu\.be\/)([^&]+)/', $url, $m) ? $m[1] : '') . "/mqdefault.jpg",
+                            'view_count' => null,
+                        ];
+                    }
+                } catch (\Exception $e) {
+                    // Ignore, drop down to exception below
+                }
                 throw new ProcessFailedException($process2);
             }
-            $stdout = trim($process2->getOutput());
         }
 
         // Take first line (in case there's extra output)
