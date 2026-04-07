@@ -21,7 +21,8 @@ class DownloadTrackJob implements ShouldQueue
     public function __construct(
         protected string $url,
         protected string $title,
-        protected string $playlistFolder = ''
+        protected string $playlistFolder = '',
+        protected string $audioFormat = 'mp3'
     ) {
     }
 
@@ -49,6 +50,7 @@ class DownloadTrackJob implements ShouldQueue
             'status' => 'downloading',
             'progress' => 0,
             'playlist_folder' => $this->playlistFolder,
+            'audio_format' => $this->audioFormat,
         ]));
 
         try {
@@ -60,9 +62,10 @@ class DownloadTrackJob implements ShouldQueue
                         'status' => 'downloading',
                         'progress' => $progress,
                         'playlist_folder' => $this->playlistFolder,
+                        'audio_format' => $this->audioFormat,
                     ]));
                 }
-            });
+            }, $this->audioFormat);
 
             Redis::hset('download_status', $id, json_encode([
                 'title' => $this->title,
@@ -70,6 +73,7 @@ class DownloadTrackJob implements ShouldQueue
                 'progress' => 100,
                 'filename' => $filename,
                 'playlist_folder' => $this->playlistFolder,
+                'audio_format' => $this->audioFormat,
             ]));
 
         } catch (\Exception $e) {
@@ -79,6 +83,7 @@ class DownloadTrackJob implements ShouldQueue
                 'status' => 'failed',
                 'error' => $e->getMessage(),
                 'playlist_folder' => $this->playlistFolder,
+                'audio_format' => $this->audioFormat,
             ]));
         }
     }

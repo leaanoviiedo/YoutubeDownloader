@@ -19,8 +19,10 @@ class DownloadPlaylistJob implements ShouldQueue
 
     public int $timeout = 600;
 
-    public function __construct(protected string $playlistUrl)
-    {
+    public function __construct(
+        protected string $playlistUrl,
+        protected string $audioFormat = 'mp3'
+    ) {
     }
 
     public function handle(YouTubeDownloadService $service): void
@@ -58,13 +60,14 @@ class DownloadPlaylistJob implements ShouldQueue
 
                 $id = md5($url);
                 Redis::hset('download_status', $id, json_encode([
-                    'title' => $title,
-                    'status' => 'queued',
-                    'progress' => 0,
-                    'playlist_folder' => $playlistFolder,
+                    'title'          => $title,
+                    'status'         => 'queued',
+                    'progress'       => 0,
+                    'playlist_folder'=> $playlistFolder,
+                    'audio_format'   => $this->audioFormat,
                 ]));
 
-                $jobs[] = new DownloadTrackJob($url, $title, $playlistFolder);
+                $jobs[] = new DownloadTrackJob($url, $title, $playlistFolder, $this->audioFormat);
             }
 
             // Dispatch all jobs at once for parallel processing

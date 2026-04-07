@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Jobs\DownloadPlaylistJob;
+use App\Jobs\DownloadTrackJob;
 use App\Services\YouTubeDownloadService;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
@@ -20,6 +21,13 @@ class Dashboard extends Component
     public string $playlistName = '';
     public ?string $errorMessage = null;
 
+    // Single-track mode
+    public bool $singleMode = false;
+    public array $singleTrackInfo = [];
+
+    // Audio format selector
+    public string $audioFormat = 'mp3';
+
     public function mount(): void
     {
         // Recover playlist name from Redis
@@ -27,14 +35,82 @@ class Dashboard extends Component
         $this->fetchDownloads();
     }
 
-    public function fetchPlaylist(): void
+    // ─────────────────────────────────────────────────────────────────────────
+    // Single-track flow
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function fetchSingleTrack(): void
     {
-        $this->validate([
-            'url' => 'required|url',
-        ]);
+        $this->validate(['url' => 'required|url']);
 
         $this->loading = true;
         $this->previewing = false;
+        $this->singleMode = false;
+        $this->singleTrackInfo = [];
+        $this->previewTracks = [];
+        $this->errorMessage = null;
+
+        try {
+            $service = app(YouTubeDownloadService::class);
+            $info = $service->getSingleTrackInfo($this->url);
+
+            $this->singleTrackInfo = $info;
+            $this->singleMode = true;
+            $this->playlistUrl = $info['url'];
+            $this->dispatch('notify', 'Canción encontrada: ' . Str::limit($info['title'], 40));
+        } catch (\Exception $e) {
+            $this->errorMessage = $this->humanizeError($e->getMessage());
+        }
+
+        $this->loading = false;
+    }
+
+    public function startSingleDownload(): void
+    {
+        if (empty($this->singleTrackInfo)) return;
+
+        $track = $this->singleTrackInfo;
+        $id = md5($track['url']);
+        $safeTitle = Str::slug($track['title'], '_') ?: 'track_' . $id;
+
+        Redis::hset('download_status', $id, json_encode([
+            'title'          => $track['title'],
+            'status'         => 'queued',
+            'progress'       => 0,
+            'playlist_folder'=> '',
+            'audio_format'   => $this->audioFormat,
+        ]));
+
+        DownloadTrackJob::dispatch($track['url'], $track['title'], '', $this->audioFormat);
+
+        $this->singleTrackInfo = [];
+        $this->singleMode = false;
+        $this->url = '';
+        $this->playlistUrl = '';
+        $this->dispatch('notify', '¡Descarga iniciada!');
+        $this->fetchDownloads();
+    }
+
+    public function cancelSingle(): void
+    {
+        $this->singleTrackInfo = [];
+        $this->singleMode = false;
+        $this->url = '';
+        $this->playlistUrl = '';
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Playlist flow
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function fetchPlaylist(): void
+    {
+        $this->validate(['url' => 'required|url']);
+
+        $this->loading = true;
+        $this->previewing = false;
+        $this->singleMode = false;
+        $this->singleTrackInfo = [];
         $this->previewTracks = [];
         $this->errorMessage = null;
 
@@ -52,8 +128,8 @@ class Dashboard extends Component
                 if (!$url) continue;
 
                 $this->previewTracks[] = [
-                    'title' => $track['title'] ?? 'Sin título',
-                    'url' => $url,
+                    'title'    => $track['title'] ?? 'Sin título',
+                    'url'      => $url,
                     'duration' => $track['duration'] ?? null,
                     'uploader' => $track['uploader'] ?? $track['channel'] ?? '',
                 ];
@@ -70,19 +146,7 @@ class Dashboard extends Component
             $this->previewing = true;
             $this->dispatch('notify', count($this->previewTracks) . ' canciones encontradas');
         } catch (\Exception $e) {
-            $errorMsg = $e->getMessage();
-
-            if (str_contains($errorMsg, 'not found') || str_contains($errorMsg, 'No such file')) {
-                $this->errorMessage = 'El servicio de descarga (yt-dlp) no está disponible. Contactá al administrador del sistema.';
-            } elseif (str_contains($errorMsg, 'is not a valid URL') || str_contains($errorMsg, 'Unsupported URL')) {
-                $this->errorMessage = 'La URL ingresada no es válida o no corresponde a una playlist de YouTube.';
-            } elseif (str_contains($errorMsg, 'HTTP Error') || str_contains($errorMsg, 'network') || str_contains($errorMsg, 'URLError')) {
-                $this->errorMessage = 'Error de conexión. Verificá tu conexión a internet e intentá de nuevo.';
-            } elseif (str_contains($errorMsg, 'Private') || str_contains($errorMsg, 'unavailable')) {
-                $this->errorMessage = 'La playlist es privada o no está disponible. Verificá que sea una playlist pública.';
-            } else {
-                $this->errorMessage = 'Ocurrió un error al buscar la playlist. Detalle: ' . \Illuminate\Support\Str::limit($errorMsg, 150);
-            }
+            $this->errorMessage = $this->humanizeError($e->getMessage());
         }
 
         $this->loading = false;
@@ -100,14 +164,15 @@ class Dashboard extends Component
         foreach ($this->previewTracks as $track) {
             $id = md5($track['url']);
             Redis::hset('download_status', $id, json_encode([
-                'title' => $track['title'],
-                'status' => 'queued',
-                'progress' => 0,
-                'playlist_folder' => $playlistFolder,
+                'title'          => $track['title'],
+                'status'         => 'queued',
+                'progress'       => 0,
+                'playlist_folder'=> $playlistFolder,
+                'audio_format'   => $this->audioFormat,
             ]));
         }
 
-        DownloadPlaylistJob::dispatch($this->playlistUrl);
+        DownloadPlaylistJob::dispatch($this->playlistUrl, $this->audioFormat);
 
         $this->previewTracks = [];
         $this->previewing = false;
@@ -116,9 +181,12 @@ class Dashboard extends Component
         $this->fetchDownloads();
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Common controls
+    // ─────────────────────────────────────────────────────────────────────────
+
     public function stopDownloads(): void
     {
-        // Mark queued/downloading tracks as 'stopped' and purge the queue
         $statuses = Redis::hgetall('download_status');
         foreach ($statuses as $id => $json) {
             $data = json_decode($json, true);
@@ -128,7 +196,6 @@ class Dashboard extends Component
             }
         }
 
-        // Clear the Redis queue to prevent pending jobs from running
         Redis::del('queues:default');
 
         $this->dispatch('notify', 'Descargas detenidas');
@@ -154,15 +221,13 @@ class Dashboard extends Component
 
         $dir = storage_path('app/downloads');
         if (is_dir($dir)) {
-            // Clean files in root
-            $patterns = ['*.mp3', '*.part', '*.temp', '*.webm', '*.m4a', '*.opus', '*.zip', '*.tmp', '*.ytdl'];
+            $patterns = ['*.mp3', '*.flac', '*.ogg', '*.part', '*.temp', '*.webm', '*.m4a', '*.opus', '*.zip', '*.tmp', '*.ytdl'];
             foreach ($patterns as $pattern) {
                 foreach (glob($dir . '/' . $pattern) as $file) {
                     @unlink($file);
                 }
             }
 
-            // Clean playlist subdirectories
             $subdirs = glob($dir . '/*', GLOB_ONLYDIR);
             foreach ($subdirs as $subdir) {
                 foreach ($patterns as $pattern) {
@@ -184,11 +249,10 @@ class Dashboard extends Component
 
         $searchDir = !empty($playlistFolder) ? $dir . '/' . $playlistFolder : $dir;
         $zipPath = $dir . '/' . $zipName;
-        
+
         $zip = new \ZipArchive();
         $zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
 
-        // Only include files that are in the current visible downloads list
         foreach ($this->downloads as $item) {
             if ($item['status'] === 'completed' && isset($item['filename'])) {
                 $filePath = $dir . '/' . $item['filename'];
@@ -213,10 +277,8 @@ class Dashboard extends Component
         $dir = storage_path('app/downloads');
         if (!is_dir($dir)) return;
 
-        // Scan root directory
         $this->scanDirectoryForFiles($dir, '');
 
-        // Scan subdirectories (playlist folders)
         $subdirs = glob($dir . '/*', GLOB_ONLYDIR);
         foreach ($subdirs as $subdir) {
             $folderName = basename($subdir);
@@ -228,20 +290,24 @@ class Dashboard extends Component
 
     private function scanDirectoryForFiles(string $dir, string $subfolder): void
     {
-        $files = glob($dir . '/*.mp3');
-        foreach ($files as $file) {
-            $filename = basename($file);
-            $relativePath = !empty($subfolder) ? $subfolder . '/' . $filename : $filename;
-            $id = md5($relativePath);
-            if (!Redis::hexists('download_status', $id)) {
-                $title = str_replace(['.mp3', '_', '-'], ['', ' ', ' '], $filename);
-                Redis::hset('download_status', $id, json_encode([
-                    'title' => ucwords(trim($title)),
-                    'status' => 'completed',
-                    'progress' => 100,
-                    'filename' => $relativePath,
-                    'playlist_folder' => $subfolder,
-                ]));
+        $extensions = ['mp3', 'flac', 'ogg'];
+        foreach ($extensions as $ext) {
+            $files = glob($dir . '/*.' . $ext);
+            foreach ($files as $file) {
+                $filename = basename($file);
+                $relativePath = !empty($subfolder) ? $subfolder . '/' . $filename : $filename;
+                $id = md5($relativePath);
+                if (!Redis::hexists('download_status', $id)) {
+                    $title = str_replace(['.' . $ext, '_', '-'], ['', ' ', ' '], $filename);
+                    Redis::hset('download_status', $id, json_encode([
+                        'title'          => ucwords(trim($title)),
+                        'status'         => 'completed',
+                        'progress'       => 100,
+                        'filename'       => $relativePath,
+                        'playlist_folder'=> $subfolder,
+                        'audio_format'   => $ext,
+                    ]));
+                }
             }
         }
     }
@@ -250,6 +316,25 @@ class Dashboard extends Component
     {
         $statuses = Redis::hgetall('download_status');
         $this->downloads = array_map(fn($item) => json_decode($item, true), $statuses);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Helpers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private function humanizeError(string $errorMsg): string
+    {
+        if (str_contains($errorMsg, 'not found') || str_contains($errorMsg, 'No such file')) {
+            return 'El servicio de descarga (yt-dlp) no está disponible. Contactá al administrador del sistema.';
+        } elseif (str_contains($errorMsg, 'is not a valid URL') || str_contains($errorMsg, 'Unsupported URL')) {
+            return 'La URL ingresada no es válida o no es compatible con YouTube.';
+        } elseif (str_contains($errorMsg, 'HTTP Error') || str_contains($errorMsg, 'network') || str_contains($errorMsg, 'URLError')) {
+            return 'Error de conexión. Verificá tu conexión a internet e intentá de nuevo.';
+        } elseif (str_contains($errorMsg, 'Private') || str_contains($errorMsg, 'unavailable')) {
+            return 'El video/playlist es privado o no está disponible.';
+        } else {
+            return 'Ocurrió un error. Detalle: ' . Str::limit($errorMsg, 150);
+        }
     }
 
     public function render()

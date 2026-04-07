@@ -54,8 +54,54 @@ class YouTubeDownloadService
         return array_map(fn($line) => json_decode($line, true), $lines);
     }
 
-    public function downloadTrack(string $url, string $outputTemplate, string $subfolder = '', ?callable $onProgress = null): string
+    /**
+     * Get metadata for a single video (ignores playlist context).
+     */
+    public function getSingleTrackInfo(string $url): array
     {
+        $process = new Process([
+            'yt-dlp',
+            '--dump-json',
+            '--no-playlist',
+            $url
+        ]);
+
+        $process->setTimeout(60);
+        $process->run();
+
+        if (!$process->isSuccessful()) {
+            throw new ProcessFailedException($process);
+        }
+
+        $output = trim($process->getOutput());
+        // Take only the first JSON object (in case of multiple lines)
+        $firstLine = strtok($output, "\n");
+        $data = json_decode($firstLine, true);
+
+        if (!$data) {
+            throw new \RuntimeException('No se pudo obtener información del video.');
+        }
+
+        return [
+            'title'     => $data['title'] ?? 'Sin título',
+            'url'       => $data['webpage_url'] ?? $url,
+            'duration'  => $data['duration'] ?? null,
+            'uploader'  => $data['uploader'] ?? $data['channel'] ?? '',
+            'thumbnail' => $data['thumbnail'] ?? null,
+            'view_count'=> $data['view_count'] ?? null,
+        ];
+    }
+
+    /**
+     * @param string $audioFormat  Accepted: mp3, flac, ogg
+     */
+    public function downloadTrack(string $url, string $outputTemplate, string $subfolder = '', ?callable $onProgress = null, string $audioFormat = 'mp3'): string
+    {
+        $allowedFormats = ['mp3', 'flac', 'ogg'];
+        if (!in_array($audioFormat, $allowedFormats)) {
+            $audioFormat = 'mp3';
+        }
+
         $downloadsDir = storage_path('app/downloads');
 
         if (!empty($subfolder)) {
@@ -72,7 +118,7 @@ class YouTubeDownloadService
         $process = new Process([
             'yt-dlp',
             '-x',
-            '--audio-format', 'mp3',
+            '--audio-format', $audioFormat,
             '--audio-quality', '0',
             '-o', $template,
             '--no-playlist',
@@ -91,18 +137,21 @@ class YouTubeDownloadService
         }
 
         // Find the output file
-        $expectedFile = $downloadsDir . '/' . $outputTemplate . '.mp3';
+        $expectedFile = $downloadsDir . '/' . $outputTemplate . '.' . $audioFormat;
         $relativePrefix = !empty($subfolder) ? $subfolder . '/' : '';
 
         if (file_exists($expectedFile)) {
             return $relativePrefix . basename($expectedFile);
         }
 
-        // Fallback: return the latest mp3 in the directory
-        $files = glob($downloadsDir . '/*.mp3');
-        if (!empty($files)) {
-            usort($files, fn($a, $b) => filemtime($b) - filemtime($a));
-            return $relativePrefix . basename($files[0]);
+        // Fallback: return the latest audio file in the directory
+        $extensions = [$audioFormat, 'mp3', 'flac', 'ogg', 'm4a', 'opus'];
+        foreach ($extensions as $ext) {
+            $files = glob($downloadsDir . '/*.' . $ext);
+            if (!empty($files)) {
+                usort($files, fn($a, $b) => filemtime($b) - filemtime($a));
+                return $relativePrefix . basename($files[0]);
+            }
         }
 
         return '';
