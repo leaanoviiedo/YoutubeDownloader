@@ -7,7 +7,7 @@ services:
     restart: unless-stopped
     working_dir: /var/www
     volumes:
-      - downloads:/var/www/storage/app/downloads
+      - ./storage/app:/var/www/storage/app
       - app_storage:/var/www/storage/framework
       - app_logs:/var/www/storage/logs
     environment:
@@ -41,7 +41,7 @@ services:
     restart: unless-stopped
     working_dir: /var/www
     volumes:
-      - downloads:/var/www/storage/app/downloads
+      - ./storage/app:/var/www/storage/app
       - app_storage:/var/www/storage/framework
       - app_logs:/var/www/storage/logs
     environment:
@@ -77,7 +77,7 @@ services:
     restart: unless-stopped
     working_dir: /var/www
     volumes:
-      - downloads:/var/www/storage/app/downloads
+      - ./storage/app:/var/www/storage/app
       - app_storage:/var/www/storage/framework
       - app_logs:/var/www/storage/logs
     environment:
@@ -144,6 +144,5 @@ networks:
 
 volumes:
   pgdata:
-  downloads:
   app_storage:
   app_logs:

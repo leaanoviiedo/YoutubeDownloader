@@ -5,11 +5,18 @@ namespace App\Livewire;
 use App\Services\AudioEditingService;
 use Illuminate\Support\Facades\Redis;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 
 class AudioEditor extends Component
 {
+    use WithFileUploads;
+
     public array $downloadedFiles = [];
     public string $tool = 'trim';
+    
+    // Upload local file
+    public $localAudio;
+
 
     // Trim
     public string $trimFile = '';
@@ -39,6 +46,30 @@ class AudioEditor extends Component
     public function mount(): void
     {
         $this->loadFiles();
+    }
+
+    public function updatedLocalAudio(): void
+    {
+        $this->validate([
+            'localAudio' => 'required|file|max:51200|mimes:mp3,wav,ogg,flac,aac,m4a' // max 50MB
+        ], [
+            'localAudio.max' => 'El archivo supera el límite de 50MB.',
+            'localAudio.mimes' => 'El formato debe ser de audio (mp3, wav, etc).'
+        ]);
+
+        try {
+            $name = $this->localAudio->getClientOriginalName();
+            $safeName = \Illuminate\Support\Str::slug(pathinfo($name, PATHINFO_FILENAME)) . '.' . pathinfo($name, PATHINFO_EXTENSION);
+            
+            // Move to local uploads folder
+            $this->localAudio->storeAs('downloads/Locales', $safeName);
+            
+            $this->localAudio = null;
+            $this->loadFiles();
+            $this->dispatch('notify', '✅ Audio local subido correctemente: ' . $safeName);
+        } catch (\Exception $e) {
+            $this->dispatch('notify', '❌ Error al subir: ' . $e->getMessage());
+        }
     }
 
     public function loadFiles(): void

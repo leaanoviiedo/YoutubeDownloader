@@ -5,7 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
         <meta name="description" content="Descargá y editá audio de YouTube en alta calidad">
-        <title>YT Downloader & Editor</title>
+        <title>YT Downloader &amp; Editor</title>
         @vite(['resources/css/app.css', 'resources/js/app.js'])
         @livewireStyles
     </head>
@@ -25,9 +25,21 @@
                     <a href="{{ route('audio.editor') }}" class="px-4 py-1.5 rounded-lg text-sm font-medium transition-all {{ request()->routeIs('audio.editor') ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white hover:bg-white/5' }}">
                         🎛️ Editor
                     </a>
+                    <a href="/configuracion" class="px-4 py-1.5 rounded-lg text-sm font-medium transition-all {{ request()->is('configuracion') ? 'bg-amber-500/20 text-amber-300' : 'text-slate-400 hover:text-white hover:bg-white/5' }}">
+                        ⚙️ Config
+                    </a>
                 </div>
             </div>
         </nav>
+
+        {{-- Flash toast from cookie upload --}}
+        @if(session('toast'))
+        <div id="flash-toast" class="fixed top-20 right-6 z-50 px-5 py-3 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-sm font-medium shadow-xl backdrop-blur-md">
+            {{ session('toast') }}
+        </div>
+        <script>setTimeout(() => document.getElementById('flash-toast')?.remove(), 4000)</script>
+        @endif
+
         <main>
             {{ $slot }}
         </main>

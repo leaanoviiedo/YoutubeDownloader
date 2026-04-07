@@ -12,8 +12,7 @@ class Dashboard extends Component
 {
     public string $url = '';
     public string $searchQuery = '';
-    public string $activeTab = 'playlist'; // playlist | search
-    public string $audioFormat = 'mp3';
+    public string $activeTab = 'download'; // download | search
     public string $audioBitrate = '0'; // 0 means default/auto
 
     // Info de la playlist o cancion única

@@ -16,12 +16,34 @@
         <button wire:click="loadFiles" class="px-3 rounded-lg text-slate-500 hover:text-slate-300 transition-colors text-xs" title="Actualizar lista">↺</button>
     </div>
 
-    @if(empty($downloadedFiles))
-        <div class="glass-card p-8 text-center">
-            <p class="text-slate-400 mb-1">No hay archivos de audio</p>
-            <p class="text-sm text-slate-600">Descargá alguna canción desde el <a href="/" class="text-violet-400 underline">Downloader</a> primero</p>
+    <div class="flex flex-wrap lg:flex-nowrap gap-6 mb-6">
+        <div class="w-full lg:w-2/3 glass-card p-5 border border-white/5 flex items-center justify-between">
+            <div>
+                <h3 class="text-sm font-semibold text-white">📁 Archivos disponibles</h3>
+                <p class="text-xs text-slate-400 mt-0.5">{{ count($downloadedFiles) }} audios listos para editar</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <button wire:click="loadFiles" class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 transition-colors text-xs" title="Actualizar lista">↺ Actualizar</button>
+            </div>
         </div>
-    @endif
+        
+        <div class="w-full lg:w-1/3 glass-card p-5 border border-violet-500/20 bg-violet-500/5 hover:bg-violet-500/10 transition-colors relative group">
+            <input type="file" wire:model="localAudio" id="localAudioInput" accept="audio/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" title="Subir audio local">
+            <div class="flex items-center justify-between pointer-events-none">
+                <div>
+                    <h3 class="text-sm font-semibold text-violet-300 group-hover:text-violet-200">⬆️ Subir desde la PC</h3>
+                    <p class="text-xs text-violet-400/70 mt-0.5">MP3, WAV, FLAC (Max 50MB)</p>
+                </div>
+                <div wire:loading.remove wire:target="localAudio" class="w-8 h-8 rounded-full bg-violet-500/20 flex items-center justify-center text-violet-300 group-hover:scale-110 transition-transform">
+                    +
+                </div>
+                <div wire:loading wire:target="localAudio" class="text-violet-300">
+                    <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                </div>
+            </div>
+            @error('localAudio')<p class="text-red-400 text-xs mt-2 relative z-20">{{ $message }}</p>@enderror
+        </div>
+    </div>
 
     {{-- ── TRIM ── --}}
     @if($tool === 'trim')
