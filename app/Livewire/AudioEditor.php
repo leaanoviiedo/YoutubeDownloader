@@ -180,6 +180,6 @@ class AudioEditor extends Component
 
     public function render()
     {
-        return view('livewire.audio-editor');
+        return view('livewire.audio-editor')->layout('components.layouts.app');
     }
 }
