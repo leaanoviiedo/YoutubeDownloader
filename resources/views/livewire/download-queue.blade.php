@@ -70,7 +70,7 @@
                             @if($status==='completed') ✓ Completada
                             @elseif($status==='downloading') ↓ {{ $progress > 0 ? round($progress).'%' : 'iniciando...' }}
                             @elseif($status==='queued') ⏳ En cola
-                            @elseif($status==='failed') ✗ Error
+                            @elseif($status==='failed') ✗ Error: {{ \Illuminate\Support\Str::limit($item['error'] ?? 'Desconocido', 40) }}
                             @else ■ Detenida @endif
                         </span>
                         @if(!empty($item['format']))<span class="text-xs px-1.5 py-0.5 rounded bg-white/5 text-slate-500">{{ $item['format'] }}</span>@endif
