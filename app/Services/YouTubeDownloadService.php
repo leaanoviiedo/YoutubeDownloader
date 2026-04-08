@@ -259,27 +259,101 @@ class YouTubeDownloadService
             }
         });
 
-        if (!$process->isSuccessful()) {
-            throw new ProcessFailedException($process);
-        }
-
-        // Find the output file
         $expectedFile = $downloadsDir . '/' . $outputTemplate . '.' . $audioFormat;
         $relativePrefix = !empty($subfolder) ? $subfolder . '/' : '';
 
-        if (file_exists($expectedFile)) {
+        if ($process->isSuccessful() && file_exists($expectedFile)) {
             return $relativePrefix . basename($expectedFile);
         }
 
-        // Fallback: return the latest audio file in the directory
-        foreach ([$audioFormat, 'mp3', 'flac', 'ogg', 'm4a', 'opus'] as $ext) {
-            $files = glob($downloadsDir . '/*.' . $ext);
-            if (!empty($files)) {
-                usort($files, fn($a, $b) => filemtime($b) - filemtime($a));
-                return $relativePrefix . basename($files[0]);
+        // ─────────────────────────────────────────────────────────────────
+        // FALLBACK: Invidious API (Decentralized instances to bypass bots)
+        // ─────────────────────────────────────────────────────────────────
+        $videoId = $this->extractVideoId($url);
+        if (!$videoId) throw new \RuntimeException("No se pudo extraer el ID del video.");
+
+        // We try a random instance from the most reliable public ones
+        $instances = [
+            'https://inv.tux.pizza',
+            'https://invidious.jing.rocks',
+            'https://iv.melmac.space', 
+            'https://invidious.asir.dev'
+        ];
+        shuffle($instances);
+
+        $downloadUrl = null;
+        foreach ($instances as $instance) {
+            try {
+                $response = \Illuminate\Support\Facades\Http::timeout(10)->get("{$instance}/api/v1/videos/{$videoId}");
+                if ($response->successful()) {
+                    $data = $response->json();
+                    if (!empty($data['adaptiveFormats'])) {
+                        // Find best audio
+                        $audioStreams = array_filter($data['adaptiveFormats'], fn($f) => str_starts_with($f['type'] ?? '', 'audio/'));
+                        if (!empty($audioStreams)) {
+                            usort($audioStreams, fn($a, $b) => ($b['bitrate'] ?? 0) <=> ($a['bitrate'] ?? 0));
+                            // Get URL
+                            foreach ($audioStreams as $stream) {
+                                if (!empty($stream['url'])) {
+                                    $downloadUrl = $stream['url'];
+                                    break;
+                                }
+                            }
+                            if ($downloadUrl) break;
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                continue;
             }
         }
 
-        return '';
+        if (!$downloadUrl) {
+            throw new \RuntimeException("Bloqueo de YouTube y falla en API de respaldo.");
+        }
+
+        $tmpRaw = $downloadsDir . '/' . $outputTemplate . '_raw.m4a'; 
+        \Illuminate\Support\Facades\Http::timeout(3600)
+            ->withOptions(['stream' => true])
+            ->sink($tmpRaw)
+            ->get($downloadUrl);
+
+        if (!file_exists($tmpRaw) || filesize($tmpRaw) === 0) {
+            throw new \RuntimeException("Error al descargar el archivo desde la API externa.");
+        }
+
+        $finalFile = $expectedFile;
+        // Basic re-encode with ffmpeg just like yt-dlp does to match format
+        $codec = match($audioFormat) {
+            'ogg' => 'libvorbis',
+            'flac' => 'flac',
+            default => 'libmp3lame'
+        };
+        $ffmpegProcess = new Process([
+            'ffmpeg', '-y', '-i', $tmpRaw, 
+            '-c:a', $codec, 
+            '-ab', '192k', 
+            $finalFile
+        ]);
+        $ffmpegProcess->setTimeout(1800);
+        $ffmpegProcess->run();
+
+        if (file_exists($tmpRaw)) {
+            @unlink($tmpRaw);
+        }
+
+        if ($ffmpegProcess->isSuccessful() && file_exists($finalFile)) {
+            return $relativePrefix . basename($finalFile);
+        }
+
+        throw new \RuntimeException("Fallo en la conversión del archivo respaldado.");
+    }
+
+    private function extractVideoId(string $url): ?string
+    {
+        if (preg_match('/(?:v=|youtu\.be\/)([^&]+)/', $url, $m)) {
+            return $m[1];
+        }
+        return null;
     }
 }
