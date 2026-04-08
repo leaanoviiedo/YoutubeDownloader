@@ -267,86 +267,59 @@ class YouTubeDownloadService
         }
 
         // ─────────────────────────────────────────────────────────────────
-        // FALLBACK: Invidious API (Decentralized instances to bypass bots)
+        // FALLBACK: Dedicated Converter API (Loader.to / Savenow)
         // ─────────────────────────────────────────────────────────────────
-        $videoId = $this->extractVideoId($url);
-        if (!$videoId) throw new \RuntimeException("No se pudo extraer el ID del video.");
+        // Map audio format to API supported format
+        $apiFormat = match ($audioFormat) {
+            'mp3' => 'mp3',
+            'flac' => 'flac',
+            'ogg' => 'ogg',
+            'wav' => 'wav',
+            default => 'mp3',
+        };
 
-        // We try a random instance from the most reliable public ones
-        $instances = [
-            'https://inv.tux.pizza',
-            'https://invidious.jing.rocks',
-            'https://iv.melmac.space', 
-            'https://invidious.asir.dev'
-        ];
-        shuffle($instances);
+        try {
+            // 1. Init conversion
+            $initResponse = \Illuminate\Support\Facades\Http::timeout(10)->get('https://loader.to/ajax/download.php', [
+                'format' => $apiFormat,
+                'url' => $url
+            ]);
 
-        $downloadUrl = null;
-        foreach ($instances as $instance) {
-            try {
-                $response = \Illuminate\Support\Facades\Http::timeout(10)->get("{$instance}/api/v1/videos/{$videoId}");
-                if ($response->successful()) {
-                    $data = $response->json();
-                    if (!empty($data['adaptiveFormats'])) {
-                        // Find best audio
-                        $audioStreams = array_filter($data['adaptiveFormats'], fn($f) => str_starts_with($f['type'] ?? '', 'audio/'));
-                        if (!empty($audioStreams)) {
-                            usort($audioStreams, fn($a, $b) => ($b['bitrate'] ?? 0) <=> ($a['bitrate'] ?? 0));
-                            // Get URL
-                            foreach ($audioStreams as $stream) {
-                                if (!empty($stream['url'])) {
-                                    $downloadUrl = $stream['url'];
-                                    break;
-                                }
-                            }
-                            if ($downloadUrl) break;
+            if ($initResponse->successful() && !empty($initResponse->json('id'))) {
+                $jobId = $initResponse->json('id');
+                $downloadUrl = null;
+
+                // 2. Poll for completion (up to 300 seconds)
+                for ($i = 0; $i < 60; $i++) {
+                    sleep(5);
+                    $progRes = \Illuminate\Support\Facades\Http::timeout(10)->get('https://p.savenow.to/api/progress', ['id' => $jobId]);
+                    if ($progRes->successful()) {
+                        $progData = $progRes->json();
+                        if (!empty($progData['download_url'])) {
+                            $downloadUrl = $progData['download_url'];
+                            break;
                         }
                     }
                 }
-            } catch (\Exception $e) {
-                continue;
+
+                if ($downloadUrl) {
+                    $finalFile = $expectedFile;
+                    // Simply download the ready file
+                    \Illuminate\Support\Facades\Http::timeout(1800)
+                        ->withOptions(['stream' => true])
+                        ->sink($finalFile)
+                        ->get($downloadUrl);
+
+                    if (file_exists($finalFile) && filesize($finalFile) > 0) {
+                        return $relativePrefix . basename($finalFile);
+                    }
+                }
             }
+        } catch (\Exception $e) {
+            // Ignore API exceptions and drop to runtime exception
         }
 
-        if (!$downloadUrl) {
-            throw new \RuntimeException("Bloqueo de YouTube y falla en API de respaldo.");
-        }
-
-        $tmpRaw = $downloadsDir . '/' . $outputTemplate . '_raw.m4a'; 
-        \Illuminate\Support\Facades\Http::timeout(3600)
-            ->withOptions(['stream' => true])
-            ->sink($tmpRaw)
-            ->get($downloadUrl);
-
-        if (!file_exists($tmpRaw) || filesize($tmpRaw) === 0) {
-            throw new \RuntimeException("Error al descargar el archivo desde la API externa.");
-        }
-
-        $finalFile = $expectedFile;
-        // Basic re-encode with ffmpeg just like yt-dlp does to match format
-        $codec = match($audioFormat) {
-            'ogg' => 'libvorbis',
-            'flac' => 'flac',
-            default => 'libmp3lame'
-        };
-        $ffmpegProcess = new Process([
-            'ffmpeg', '-y', '-i', $tmpRaw, 
-            '-c:a', $codec, 
-            '-ab', '192k', 
-            $finalFile
-        ]);
-        $ffmpegProcess->setTimeout(1800);
-        $ffmpegProcess->run();
-
-        if (file_exists($tmpRaw)) {
-            @unlink($tmpRaw);
-        }
-
-        if ($ffmpegProcess->isSuccessful() && file_exists($finalFile)) {
-            return $relativePrefix . basename($finalFile);
-        }
-
-        throw new \RuntimeException("Fallo en la conversión del archivo respaldado.");
+        throw new \RuntimeException("Bloqueo de YouTube y falla en API de respaldo principal y secundaria. Subí cookies en la pestaña de Configuración.");
     }
 
     private function extractVideoId(string $url): ?string
