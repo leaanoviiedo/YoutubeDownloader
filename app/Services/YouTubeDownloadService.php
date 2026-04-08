@@ -291,10 +291,21 @@ class YouTubeDownloadService
 
                 // 2. Poll for completion (up to 300 seconds)
                 for ($i = 0; $i < 60; $i++) {
-                    sleep(5);
+                    sleep(3);
                     $progRes = \Illuminate\Support\Facades\Http::timeout(10)->get('https://p.savenow.to/api/progress', ['id' => $jobId]);
                     if ($progRes->successful()) {
                         $progData = $progRes->json();
+                        
+                        // Error handling from API
+                        if (isset($progData['success']) && $progData['success'] == 0 && isset($progData['text']) && (str_contains(strtolower($progData['text']), 'error') || str_contains(strtolower($progData['text']), 'fail'))) {
+                            throw new \RuntimeException("API Externa (Loader.to) rechazó este video: " . $progData['text']);
+                        }
+
+                        if ($onProgress && isset($progData['progress'])) {
+                            $pct = round($progData['progress'] / 10, 1);
+                            $onProgress("[download] {$pct}% of unknown");
+                        }
+
                         if (!empty($progData['download_url'])) {
                             $downloadUrl = $progData['download_url'];
                             break;
@@ -314,12 +325,14 @@ class YouTubeDownloadService
                         return $relativePrefix . basename($finalFile);
                     }
                 }
+            } else {
+                 throw new \RuntimeException("API de conversión (Loader) rechazada en inicio. " . $initResponse->body());
             }
         } catch (\Exception $e) {
-            // Ignore API exceptions and drop to runtime exception
+            throw new \RuntimeException("API de conversión: " . $e->getMessage());
         }
 
-        throw new \RuntimeException("Bloqueo de YouTube y falla en API de respaldo principal y secundaria. Subí cookies en la pestaña de Configuración.");
+        throw new \RuntimeException("Tiempo de espera agotado al convertir en la API externa. Subí cookies en Configuración.");
     }
 
     private function extractVideoId(string $url): ?string
