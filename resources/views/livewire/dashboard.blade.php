@@ -144,11 +144,20 @@
                 </div>
                 <div class="flex flex-wrap gap-2">
                     @if(count($previewTracks) > 1)
-                        <button wire:click="selectAllTracks" class="text-xs px-3 py-1.5 rounded bg-white/5 hover:bg-white/10 text-slate-300">✅ Todas</button>
-                        <button wire:click="deselectAllTracks" class="text-xs px-3 py-1.5 rounded bg-white/5 hover:bg-white/10 text-slate-300">⬜ Ninguna</button>
+                        <button wire:click="selectAllTracks" wire:target="selectAllTracks" wire:loading.attr="disabled" class="text-xs px-3 py-1.5 rounded bg-white/5 hover:bg-white/10 text-slate-300 disabled:opacity-50">
+                            <span wire:loading.remove wire:target="selectAllTracks">✅ Todas</span>
+                            <span wire:loading wire:target="selectAllTracks">⏳ Cargando...</span>
+                        </button>
+                        <button wire:click="deselectAllTracks" wire:target="deselectAllTracks" wire:loading.attr="disabled" class="text-xs px-3 py-1.5 rounded bg-white/5 hover:bg-white/10 text-slate-300 disabled:opacity-50">
+                            <span wire:loading.remove wire:target="deselectAllTracks">⬜ Ninguna</span>
+                            <span wire:loading wire:target="deselectAllTracks">⏳ Cargando...</span>
+                        </button>
                     @endif
-                    <button wire:click="cancelPreview" class="text-xs px-3 py-1.5 rounded text-slate-500 hover:text-red-400">✕ Cancelar</button>
-                    <button wire:click="processSelected" class="text-sm px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white font-medium"
+                    <button wire:click="cancelPreview" wire:target="cancelPreview" wire:loading.attr="disabled" class="text-xs px-3 py-1.5 rounded text-slate-500 hover:text-red-400 disabled:opacity-50">
+                        <span wire:loading.remove wire:target="cancelPreview">✕ Cancelar</span>
+                        <span wire:loading wire:target="cancelPreview">⏳ Cancelando...</span>
+                    </button>
+                    <button wire:click="processSelected" class="text-sm px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white font-medium disabled:opacity-50"
                         @if(empty($selectedTracks)) disabled @endif>
                         ⬇ Descargar ({{ count($selectedTracks) }})
                     </button>
@@ -159,12 +168,14 @@
                 @foreach($previewTracks as $i => $track)
                     @if(!empty($track['title']) && !in_array($track['title'], ['[Deleted video]','[Private video]']))
                         @php $ck = in_array($i, $selectedTracks); @endphp
-                        <div wire:click="toggleTrack({{ $i }})"
+                        <div wire:key="track-{{ $i }}" wire:click="toggleTrack({{ $i }})"
                             class="flex items-center gap-3 p-2 rounded cursor-pointer transition-colors {{ $ck ? 'bg-blue-500/10' : 'bg-white/3 hover:bg-white/8' }}">
                             <div class="w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center {{ $ck ? 'bg-blue-500 border-blue-500' : 'border-slate-600' }}">
-                                @if($ck)<svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>@endif
+                                @if($ck)<svg wire:key="icon-ck-{{ $i }}" class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+                                @else <div wire:key="icon-un-{{ $i }}"></div>
+                                @endif
                             </div>
-                            @if(!empty($track['thumbnail']))<img src="{{ $track['thumbnail'] }}" class="w-12 h-8 object-cover rounded flex-shrink-0">@endif
+                            @if(!empty($track['thumbnail']))<img src="{{ $track['thumbnail'] }}" class="w-12 h-8 object-cover rounded flex-shrink-0" loading="lazy">@endif
                             <div class="flex-1 min-w-0">
                                 <p class="text-sm text-white truncate">{{ $track['title'] }}</p>
                                 <p class="text-xs text-slate-500">{{ $track['uploader'] ?? $track['channel'] ?? '' }}</p>
