@@ -7,12 +7,11 @@ use Illuminate\Support\Facades\Redis;
 
 class CleanOldDownloads extends Command
 {
-    protected $signature = 'downloads:clean {--days=1 : Days to keep downloads}';
-    protected $description = 'Elimina descargas con más de X días de antigüedad';
+    protected $signature = 'downloads:clean {--days= : Days to keep downloads} {--hours= : Hours to keep downloads}';
+    protected $description = 'Elimina descargas de audio y carpetas vacías según antigüedad';
 
     public function handle(): int
     {
-        $days = (int) $this->option('days');
         $dir = storage_path('app/downloads');
 
         if (!is_dir($dir)) {
@@ -20,16 +19,25 @@ class CleanOldDownloads extends Command
             return 0;
         }
 
-        $cutoff = now()->subDays($days)->timestamp;
+        $cutoff = now();
+        if ($this->option('hours')) {
+            $cutoff = $cutoff->subHours((int) $this->option('hours'));
+        } elseif ($this->option('days')) {
+            $cutoff = $cutoff->subDays((int) $this->option('days'));
+        } else {
+            // Predeterminado: 2 horas
+            $cutoff = $cutoff->subHours(2);
+        }
+        $cutoffTimestamp = $cutoff->timestamp;
         $deleted = 0;
 
         // Clean root directory
-        $deleted += $this->cleanDirectory($dir, $cutoff);
+        $deleted += $this->cleanDirectory($dir, $cutoffTimestamp);
 
         // Clean playlist subdirectories
         $subdirs = glob($dir . '/*', GLOB_ONLYDIR);
         foreach ($subdirs as $subdir) {
-            $deleted += $this->cleanDirectory($subdir, $cutoff);
+            $deleted += $this->cleanDirectory($subdir, $cutoffTimestamp);
 
             // Remove empty directories
             if (count(glob($subdir . '/*')) === 0) {
@@ -37,29 +45,23 @@ class CleanOldDownloads extends Command
             }
         }
 
-        // Clean stale Redis entries
-        $statuses = Redis::hgetall('download_status');
-        foreach ($statuses as $id => $json) {
-            $data = json_decode($json, true);
-            if ($data['status'] === 'completed' && isset($data['filename'])) {
-                $path = $dir . '/' . $data['filename'];
-                if (!file_exists($path)) {
-                    Redis::hdel('download_status', $id);
-                }
-            }
-        }
+        // Las entradas de Redis ahora tienen TTL (expiran solas en 2 horas)
+        // por lo que no es necesario limpiarlas manualmente de Redis aquí.
 
-        $this->info("Eliminados {$deleted} archivos con más de {$days} día(s).");
+        $this->info("Eliminados {$deleted} archivos más antiguos que " . $cutoff->format('Y-m-d H:i:s'));
         return 0;
     }
 
-    private function cleanDirectory(string $dir, int $cutoff): int
+    private function cleanDirectory(string $dir, int $cutoffTimestamp): int
     {
         $deleted = 0;
-        $files = glob($dir . '/*.mp3');
+        $files = [];
+        foreach (['mp3', 'flac', 'ogg', 'wav', 'aac', 'm4a'] as $ext) {
+            $files = array_merge($files, glob($dir . '/*.' . $ext) ?: []);
+        }
 
         foreach ($files as $file) {
-            if (filemtime($file) < $cutoff) {
+            if (filemtime($file) < $cutoffTimestamp) {
                 @unlink($file);
                 $deleted++;
             }

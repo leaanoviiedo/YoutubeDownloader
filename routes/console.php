@@ -8,5 +8,5 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// Limpiar descargas viejas cada día a las 03:00
-Schedule::command('downloads:clean --days=1')->dailyAt('03:00');
+// Limpiar descargas viejas (y carpetas vacías) cada hora, reteniendo máx 2 horas
+Schedule::command('downloads:clean --hours=2')->hourly();

@@ -13,7 +13,9 @@ class DownloadQueue extends Component
     public function fetchDownloads(): void
     {
         try {
-            $statuses = Redis::hgetall('download_status');
+            $sid = session()->getId();
+            $hashKey = "download_status_{$sid}";
+            $statuses = Redis::hgetall($hashKey);
             $this->downloads = [];
             foreach ((array) $statuses as $id => $json) {
                 $d = json_decode($json, true);
@@ -31,14 +33,16 @@ class DownloadQueue extends Component
     public function stopDownloads(): void
     {
         try {
-            foreach ((array) Redis::hgetall('download_status') as $id => $json) {
+            $sid = session()->getId();
+            $hashKey = "download_status_{$sid}";
+            foreach ((array) Redis::hgetall($hashKey) as $id => $json) {
                 $data = json_decode($json, true);
                 if (isset($data['status']) && in_array($data['status'], ['queued', 'downloading'])) {
                     $data['status'] = 'stopped';
-                    Redis::hset('download_status', $id, json_encode($data));
+                    Redis::hset($hashKey, $id, json_encode($data));
                 }
             }
-            Redis::del('queues:default');
+            // Eliminado Redis::del('queues:default') para no afectar a otros
             $this->dispatch('notify', 'Descargas detenidas');
             $this->fetchDownloads();
         } catch (\Exception $e) {
@@ -49,7 +53,10 @@ class DownloadQueue extends Component
     public function clearAll(): void
     {
         try {
-            Redis::del('download_status');
+            $sid = session()->getId();
+            Redis::del("download_status_{$sid}");
+            Redis::del("current_playlist_folder_{$sid}");
+            Redis::del("current_playlist_name_{$sid}");
             $this->downloads = [];
             $this->dispatch('notify', 'Cola vaciada');
         } catch (\Exception $e) {

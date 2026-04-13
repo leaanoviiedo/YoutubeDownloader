@@ -234,8 +234,11 @@ class Dashboard extends Component
         }
 
         $playlistFolder = Str::slug($this->playlistTitle ?? 'Descargas');
-        Redis::set('current_playlist_folder', $playlistFolder);
-        Redis::set('current_playlist_name', $this->playlistTitle ?? 'Descargas');
+        $sid = session()->getId();
+        Redis::set("current_playlist_folder_{$sid}", $playlistFolder);
+        Redis::set("current_playlist_name_{$sid}", $this->playlistTitle ?? 'Descargas');
+        Redis::expire("current_playlist_folder_{$sid}", 7200);
+        Redis::expire("current_playlist_name_{$sid}", 7200);
 
         $count = 0;
         foreach ($this->selectedTracks as $index) {
@@ -277,8 +280,10 @@ class Dashboard extends Component
         // Use md5(url) as ID — SAME as what DownloadTrackJob uses internally
         // This ensures both refer to the same Redis key (no duplicate entries)
         $id = md5($trackUrl);
+        $sid = session()->getId();
+        $hashKey = "download_status_{$sid}";
 
-        Redis::hset('download_status', $id, json_encode([
+        Redis::hset($hashKey, $id, json_encode([
             'id'        => $id,
             'title'     => $trackTitle,
             'status'    => 'queued',
@@ -289,6 +294,7 @@ class Dashboard extends Component
             'duration'  => $trackData['duration'] ?? null,
             'channel'   => $trackData['uploader'] ?? $trackData['channel'] ?? null,
         ]));
+        Redis::expire($hashKey, 7200);
 
         // Dispatch with url + title strings (matches Job constructor signature)
         DownloadTrackJob::dispatch(
@@ -296,7 +302,8 @@ class Dashboard extends Component
             $trackTitle,
             $folder,
             $this->audioFormat,
-            $this->audioBitrate
+            $this->audioBitrate,
+            $sid
         );
     }
 
@@ -306,16 +313,18 @@ class Dashboard extends Component
 
     public function stopDownloads(): void
     {
-        $statuses = Redis::hgetall('download_status');
+        $sid = session()->getId();
+        $hashKey = "download_status_{$sid}";
+        $statuses = Redis::hgetall($hashKey);
         foreach ($statuses as $id => $json) {
             $data = json_decode($json, true);
             if (in_array($data['status'], ['queued', 'downloading'])) {
                 $data['status'] = 'stopped';
-                Redis::hset('download_status', $id, json_encode($data));
+                Redis::hset($hashKey, $id, json_encode($data));
             }
         }
 
-        Redis::del('queues:default');
+        // Ya no limpiamos toda la queue:default porque podríamos afectar a otros
         $this->dispatch('notify', 'Descargas detenidas');
         $this->fetchDownloads();
     }

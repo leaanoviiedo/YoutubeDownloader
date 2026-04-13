@@ -48,9 +48,10 @@ Route::get('/play/{path}', function (string $path) {
 
 // Download all as ZIP
 Route::get('/download-all', function () {
+    $sid = session()->getId();
     $downloadsPath  = storage_path('app/downloads');
-    $playlistFolder = \Illuminate\Support\Facades\Redis::get('current_playlist_folder') ?? '';
-    $playlistName   = \Illuminate\Support\Facades\Redis::get('current_playlist_name') ?? 'playlist';
+    $playlistFolder = \Illuminate\Support\Facades\Redis::get("current_playlist_folder_{$sid}") ?? '';
+    $playlistName   = \Illuminate\Support\Facades\Redis::get("current_playlist_name_{$sid}") ?? 'playlist';
     $zipName        = \Illuminate\Support\Str::slug($playlistName, '_') . '.zip';
     $searchDir      = !empty($playlistFolder) ? $downloadsPath . '/' . $playlistFolder : $downloadsPath;
     $files = [];

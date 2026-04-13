@@ -23,16 +23,18 @@ class DownloadTrackJob implements ShouldQueue
         protected string $title,
         protected string $playlistFolder = '',
         protected string $audioFormat    = 'mp3',
-        protected string $audioBitrate   = 'best'
+        protected string $audioBitrate   = 'best',
+        protected string $sessionId      = ''
     ) {
     }
 
     public function handle(YouTubeDownloadService $service): void
     {
         $id = md5($this->url);
+        $hashKey = $this->sessionId ? "download_status_{$this->sessionId}" : 'download_status';
 
         // Check if this download was stopped
-        $existing = Redis::hget('download_status', $id);
+        $existing = Redis::hget($hashKey, $id);
         if ($existing) {
             $data = json_decode($existing, true);
             if (($data['status'] ?? '') === 'stopped') {
@@ -45,7 +47,7 @@ class DownloadTrackJob implements ShouldQueue
             $safeTitle = 'track_' . $id;
         }
 
-        Redis::hset('download_status', $id, json_encode([
+        Redis::hset($hashKey, $id, json_encode([
             'title'          => $this->title,
             'status'         => 'downloading',
             'progress'       => 0,
@@ -59,10 +61,10 @@ class DownloadTrackJob implements ShouldQueue
                 $this->url,
                 $safeTitle,
                 $this->playlistFolder,
-                function ($buffer) use ($id) {
+                function ($buffer) use ($id, $hashKey) {
                     if (preg_match('/\[download\]\s+(\d+\.?\d*)%/', $buffer, $matches)) {
                         $progress = floatval($matches[1]);
-                        Redis::hset('download_status', $id, json_encode([
+                        Redis::hset($hashKey, $id, json_encode([
                             'title'          => $this->title,
                             'status'         => 'downloading',
                             'progress'       => $progress,
@@ -70,13 +72,14 @@ class DownloadTrackJob implements ShouldQueue
                             'audio_format'   => $this->audioFormat,
                             'audio_bitrate'  => $this->audioBitrate,
                         ]));
+                        Redis::expire($hashKey, 7200); // 2 hours expiry
                     }
                 },
                 $this->audioFormat,
                 $this->audioBitrate
             );
 
-            Redis::hset('download_status', $id, json_encode([
+            Redis::hset($hashKey, $id, json_encode([
                 'title'          => $this->title,
                 'status'         => 'completed',
                 'progress'       => 100,
@@ -85,10 +88,11 @@ class DownloadTrackJob implements ShouldQueue
                 'audio_format'   => $this->audioFormat,
                 'audio_bitrate'  => $this->audioBitrate,
             ]));
+            Redis::expire($hashKey, 7200);
 
         } catch (\Exception $e) {
             Log::error("Error al descargar {$this->title}: " . $e->getMessage());
-            Redis::hset('download_status', $id, json_encode([
+            Redis::hset($hashKey, $id, json_encode([
                 'title'          => $this->title,
                 'status'         => 'failed',
                 'error'          => $e->getMessage(),
@@ -96,6 +100,7 @@ class DownloadTrackJob implements ShouldQueue
                 'audio_format'   => $this->audioFormat,
                 'audio_bitrate'  => $this->audioBitrate,
             ]));
+            Redis::expire($hashKey, 7200);
         }
     }
 }
