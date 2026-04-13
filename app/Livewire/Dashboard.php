@@ -70,20 +70,26 @@ class Dashboard extends Component
         $this->selectedTracks = [];
         $this->playlistTitle = null;
 
-        // Strip &list= param — only download this specific video
+        // No eliminamos el parámetro list para que sea tratada como playlist
         $cleanUrl = $this->url;
-        if (str_contains($cleanUrl, 'list=')) {
-            parse_str(parse_url($cleanUrl, PHP_URL_QUERY) ?? '', $params);
-            if (!empty($params['v'])) {
-                $cleanUrl = 'https://www.youtube.com/watch?v=' . $params['v'];
-            }
-        }
 
         try {
             $service = app(YouTubeDownloadService::class);
-            $info = $service->getSingleTrackInfo($cleanUrl);
-            // Ensure the URL key uses the clean URL
-            $info['url'] = $cleanUrl;
+            $tracks = $service->getPlaylistInfo($cleanUrl);
+            if (empty($tracks)) {
+                throw new \Exception("No se encontró información de la canción.");
+            }
+            // Tomamos solo la primera de la lista
+            $info = $tracks[0];
+            
+            if (empty($info['url']) && !empty($info['webpage_url'])) {
+                $info['url'] = $info['webpage_url'];
+            } elseif (empty($info['url']) && !empty($info['id'])) {
+                $info['url'] = 'https://www.youtube.com/watch?v=' . $info['id'];
+            } else {
+                $info['url'] = $cleanUrl;
+            }
+
             $this->playlistTitle = $info['title'] ?? 'Video';
             $this->previewTracks = [$info];
             $this->selectedTracks = [0];
@@ -165,8 +171,20 @@ class Dashboard extends Component
                 $this->previewTracks = $service->getPlaylistInfo($this->url);
             } else {
                 $this->playlistTitle = 'Video Único';
-                $info = $service->getSingleTrackInfo($this->url);
-                $this->previewTracks = [$info];
+                $tracks = $service->getPlaylistInfo($this->url);
+                if (!empty($tracks)) {
+                    $info = $tracks[0];
+                    if (empty($info['url']) && !empty($info['webpage_url'])) {
+                        $info['url'] = $info['webpage_url'];
+                    } elseif (empty($info['url']) && !empty($info['id'])) {
+                        $info['url'] = 'https://www.youtube.com/watch?v=' . $info['id'];
+                    } else {
+                        $info['url'] = $this->url;
+                    }
+                    $this->previewTracks = [$info];
+                } else {
+                    $this->previewTracks = [];
+                }
             }
 
             // Seleccionar todas por defecto

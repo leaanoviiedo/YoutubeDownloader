@@ -23,13 +23,18 @@
             </div>
             @if(!empty($downloads))
             <div class="flex gap-2">
+                @if($done > 0 && !$downloading && !$queued)
+                <a href="{{ route('download.all') }}" class="text-xs px-3 py-1.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-500/30 flex items-center gap-1 font-medium transition-colors">
+                    📦 Bajar ZIP
+                </a>
+                @endif
                 @if($downloading || $queued)
                 <button wire:click="stopDownloads" class="text-xs px-3 py-1.5 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30">
                     <span wire:loading.remove wire:target="stopDownloads">■ Detener</span>
                     <span wire:loading wire:target="stopDownloads">…</span>
                 </button>
                 @endif
-                <button wire:click="clearAll" class="text-xs px-3 py-1.5 rounded bg-white/5 hover:bg-white/10 text-slate-400">
+                <button wire:click="clearAll" class="text-xs px-3 py-1.5 rounded bg-white/5 hover:bg-white/10 text-slate-400 flex items-center gap-1 transition-colors">
                     <span wire:loading.remove wire:target="clearAll">🗑 Limpiar</span>
                     <span wire:loading wire:target="clearAll">…</span>
                 </button>
