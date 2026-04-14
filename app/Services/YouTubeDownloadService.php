@@ -289,9 +289,9 @@ class YouTubeDownloadService
                 $jobId = $initResponse->json('id');
                 $downloadUrl = null;
 
-                // 2. Poll for completion (up to 300 seconds)
-                for ($i = 0; $i < 60; $i++) {
-                    sleep(3);
+                // 2. Poll for completion (hasta 15 minutos en caso de mucha cola)
+                for ($i = 0; $i < 180; $i++) {
+                    sleep(5);
                     $progRes = \Illuminate\Support\Facades\Http::timeout(10)->get('https://p.savenow.to/api/progress', ['id' => $jobId]);
                     if ($progRes->successful()) {
                         $progData = $progRes->json();
