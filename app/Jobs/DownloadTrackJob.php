@@ -33,10 +33,10 @@ class DownloadTrackJob implements ShouldQueue
         $id = md5($this->url);
         $hashKey = $this->sessionId ? "download_status_{$this->sessionId}" : 'download_status';
 
-        // Check if this download was stopped
+        $data = [];
         $existing = Redis::hget($hashKey, $id);
         if ($existing) {
-            $data = json_decode($existing, true);
+            $data = json_decode($existing, true) ?? [];
             if (($data['status'] ?? '') === 'stopped') {
                 return;
             }
@@ -47,14 +47,17 @@ class DownloadTrackJob implements ShouldQueue
             $safeTitle = 'track_' . $id;
         }
 
-        Redis::hset($hashKey, $id, json_encode([
+        $data = array_merge($data, [
+            'id'             => $id,
+            'url'            => $this->url,
             'title'          => $this->title,
             'status'         => 'downloading',
             'progress'       => 0,
             'playlist_folder'=> $this->playlistFolder,
             'audio_format'   => $this->audioFormat,
             'audio_bitrate'  => $this->audioBitrate,
-        ]));
+        ]);
+        Redis::hset($hashKey, $id, json_encode($data));
 
         try {
             $filename = $service->downloadTrack(
@@ -64,14 +67,10 @@ class DownloadTrackJob implements ShouldQueue
                 function ($buffer) use ($id, $hashKey) {
                     if (preg_match('/\[download\]\s+(\d+\.?\d*)%/', $buffer, $matches)) {
                         $progress = floatval($matches[1]);
-                        Redis::hset($hashKey, $id, json_encode([
-                            'title'          => $this->title,
-                            'status'         => 'downloading',
-                            'progress'       => $progress,
-                            'playlist_folder'=> $this->playlistFolder,
-                            'audio_format'   => $this->audioFormat,
-                            'audio_bitrate'  => $this->audioBitrate,
-                        ]));
+                        $currentData = json_decode(Redis::hget($hashKey, $id) ?? '{}', true) ?: [];
+                        $currentData['status'] = 'downloading';
+                        $currentData['progress'] = $progress;
+                        Redis::hset($hashKey, $id, json_encode($currentData));
                         Redis::expire($hashKey, 7200); // 2 hours expiry
                     }
                 },
@@ -79,27 +78,19 @@ class DownloadTrackJob implements ShouldQueue
                 $this->audioBitrate
             );
 
-            Redis::hset($hashKey, $id, json_encode([
-                'title'          => $this->title,
-                'status'         => 'completed',
-                'progress'       => 100,
-                'filename'       => $filename,
-                'playlist_folder'=> $this->playlistFolder,
-                'audio_format'   => $this->audioFormat,
-                'audio_bitrate'  => $this->audioBitrate,
-            ]));
+            $finalData = json_decode(Redis::hget($hashKey, $id) ?? '{}', true) ?: [];
+            $finalData['status'] = 'completed';
+            $finalData['progress'] = 100;
+            $finalData['filename'] = $filename;
+            Redis::hset($hashKey, $id, json_encode($finalData));
             Redis::expire($hashKey, 7200);
 
         } catch (\Exception $e) {
             Log::error("Error al descargar {$this->title}: " . $e->getMessage());
-            Redis::hset($hashKey, $id, json_encode([
-                'title'          => $this->title,
-                'status'         => 'failed',
-                'error'          => $e->getMessage(),
-                'playlist_folder'=> $this->playlistFolder,
-                'audio_format'   => $this->audioFormat,
-                'audio_bitrate'  => $this->audioBitrate,
-            ]));
+            $errorData = json_decode(Redis::hget($hashKey, $id) ?? '{}', true) ?: [];
+            $errorData['status'] = 'failed';
+            $errorData['error'] = $e->getMessage();
+            Redis::hset($hashKey, $id, json_encode($errorData));
             Redis::expire($hashKey, 7200);
         }
     }

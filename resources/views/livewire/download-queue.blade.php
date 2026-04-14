@@ -97,6 +97,17 @@
                        class="p-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-xs" title="Reproducir">▶</a>
                 </div>
                 @endif
+
+                @if($status==='failed' && !empty($item['id']))
+                <div class="flex gap-1 flex-shrink-0">
+                    <button wire:click="retryDownload('{{ $item['id'] }}')" 
+                            class="p-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 text-xs transition-colors" 
+                            title="Reintentar descarga">
+                        <span wire:loading.remove wire:target="retryDownload('{{ $item['id'] }}')">🔄</span>
+                        <span wire:loading wire:target="retryDownload('{{ $item['id'] }}')">⏳</span>
+                    </button>
+                </div>
+                @endif
             </div>
             @endforeach
         </div>

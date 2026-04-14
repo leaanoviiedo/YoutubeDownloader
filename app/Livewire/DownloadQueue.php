@@ -64,6 +64,41 @@ class DownloadQueue extends Component
         }
     }
 
+    public function retryDownload(string $id): void
+    {
+        try {
+            $sid = session()->getId();
+            $hashKey = "download_status_{$sid}";
+            $json = Redis::hget($hashKey, $id);
+            if ($json) {
+                $data = json_decode($json, true);
+                if (isset($data['status']) && $data['status'] === 'failed' && !empty($data['url'])) {
+                    $data['status'] = 'queued';
+                    $data['error'] = null;
+                    $data['progress'] = 0;
+                    $data['added_at'] = now()->timestamp;
+                    Redis::hset($hashKey, $id, json_encode($data));
+                    
+                    \App\Jobs\DownloadTrackJob::dispatch(
+                        $data['url'],
+                        $data['title'] ?? 'Sin título',
+                        $data['playlist_folder'] ?? '',
+                        $data['audio_format'] ?? 'mp3',
+                        $data['audio_bitrate'] ?? 'best',
+                        $sid
+                    );
+                    
+                    $this->dispatch('notify', 'Reintentando descarga...');
+                    $this->fetchDownloads();
+                } else {
+                    $this->dispatch('notify', 'No se pudo reintentar: Faltan datos originales.');
+                }
+            }
+        } catch (\Exception $e) {
+            Log::error('DownloadQueue::retryDownload - ' . $e->getMessage());
+        }
+    }
+
     public function render()
     {
         $this->fetchDownloads();

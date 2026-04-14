@@ -285,6 +285,7 @@ class Dashboard extends Component
 
         Redis::hset($hashKey, $id, json_encode([
             'id'        => $id,
+            'url'       => $trackUrl,
             'title'     => $trackTitle,
             'status'    => 'queued',
             'progress'  => 0,
