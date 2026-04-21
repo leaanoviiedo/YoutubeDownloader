@@ -59,10 +59,19 @@ class Dashboard extends Component
 
     public function fetchSingleTrack(): void
     {
+        // Strip music.youtube.com → youtube.com
+        $this->url = str_replace('music.youtube.com', 'youtube.com', trim($this->url));
+
         $this->validate(['url' => 'required|url'], [
             'url.required' => 'Ingresá una URL de YouTube',
             'url.url'      => 'El formato de la URL no es válido',
         ]);
+
+        // Validate it's actually a YouTube link
+        if (!preg_match('#^https?://(www\.)?youtube\.com/|^https?://youtu\.be/#i', $this->url)) {
+            $this->errorMsg = 'La URL debe ser un link de YouTube.';
+            return;
+        }
 
         $this->errorMsg = null;
         $this->previewing = true;

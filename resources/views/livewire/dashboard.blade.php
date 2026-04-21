@@ -66,7 +66,7 @@
         {{-- URL Input form --}}
         @if(!$previewing)
         <div class="glass-card p-6 mb-6">
-            <input type="text" wire:model="url" wire:keydown.enter="quickDownloadSingle"
+            <input type="text" wire:model="url" wire:keydown.enter="fetchSingleTrack"
                 placeholder="Pegá la URL del video o playlist..."
                 class="glass-input w-full text-base mb-4" id="yt-url-input">
 
